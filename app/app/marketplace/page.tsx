@@ -25,22 +25,23 @@ import {
 } from '@solana/spl-token'
 
 // Updated Program ID
-const PROGRAM_ID = new PublicKey('8KzE3LCicxv13iJx2v2V4VQQNWt4QHuvfuH8jxYnkGQ1')
+const PROGRAM_ID = new PublicKey('12LJUQx5mfVfqACGgEac65Xe6PMGnYm5rdaRRcU4HE7V')
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s')
 
 // Connection
 const connection = new Connection('https://api.devnet.solana.com', 'confirmed')
 
-// Correct instruction discriminators from IDL
-const MARKETPLACE_DISCRIMINATOR = [47, 81, 64, 0, 96, 56, 105, 7] // initialize_marketplace
-const COLLECTION_DISCRIMINATOR = [39, 179, 4, 147, 128, 226, 252, 134] // create_nft_collection  
-const CREATE_ITEM_TYPE_DISCRIMINATOR = [62, 86, 26, 185, 222, 101, 143, 142] // create_item_type
-const MINT_NFT_DISCRIMINATOR = [157, 81, 72, 124, 57, 0, 110, 9] // mint_nft_from_collection
+// Compute instruction discriminators at runtime to avoid drift
+async function instructionDiscriminator(name: string): Promise<Uint8Array> {
+  const preimage = new TextEncoder().encode(`global:${name}`)
+  const hash = await crypto.subtle.digest('SHA-256', preimage)
+  return new Uint8Array(hash).slice(0, 8)
+}
 
 // Account discriminators for parsing
 const MARKETPLACE_ACCOUNT_DISCRIMINATOR = [70, 222, 41, 62, 78, 3, 32, 174] // Marketplace
 const COLLECTION_ACCOUNT_DISCRIMINATOR = [243, 209, 195, 150, 192, 176, 151, 165] // NFTCollection
-const ITEM_TYPE_ACCOUNT_DISCRIMINATOR = [94, 244, 226, 71, 95, 247, 231, 48] // NFTItemType
+// NftType account discriminator is not hardcoded; parse heuristically
 
 interface Marketplace {
   admin: PublicKey
@@ -54,9 +55,6 @@ interface NFTCollection {
   name: string
   symbol: string
   uri: string
-  max_supply: number
-  current_supply: number
-  price: number
   royalty: number
   mint: PublicKey
   is_active: boolean
@@ -67,10 +65,10 @@ interface NFTCollection {
 interface NFTItemType {
   collection: PublicKey
   name: string
-  symbol: string
   uri: string
   price: number
-  is_active: boolean
+  max_supply: number
+  current_supply: number
   bump: number
 }
 
@@ -79,7 +77,7 @@ export default function MarketplacePage() {
   const [marketplace, setMarketplace] = useState<Marketplace | null>(null)
   const [collections, setCollections] = useState<NFTCollection[]>([])
   const [itemTypesByCollection, setItemTypesByCollection] = useState<Record<string, NFTItemType[]>>({})
-  const [activeTab, setActiveTab] = useState<'marketplace' | 'my' | 'admin'>('marketplace')
+  const [activeTab, setActiveTab] = useState<'marketplace' | 'inventory' | 'admin'>('marketplace')
   const [pinataJWT, setPinataJWT] = useState('')
   const [pinName, setPinName] = useState('')
   const [pinSymbol, setPinSymbol] = useState('')
@@ -91,6 +89,15 @@ export default function MarketplacePage() {
   const [itemTypeName, setItemTypeName] = useState('')
   const [itemTypeSymbol, setItemTypeSymbol] = useState('')
   const [itemTypePrice, setItemTypePrice] = useState('0.1')
+  const [itemTypeMaxSupply, setItemTypeMaxSupply] = useState('1000')
+  // Admin: item type modal & pinata
+  const [showTypeModal, setShowTypeModal] = useState(false)
+  const [typeImageFile, setTypeImageFile] = useState<File | null>(null)
+  const [typeDescription, setTypeDescription] = useState('')
+  const [typeAttributes, setTypeAttributes] = useState<{trait_type:string; value:string}[]>([])
+  const [pinApiKey, setPinApiKey] = useState('d24e9fb3ee90ae7a492e')
+  const [pinApiSecret, setPinApiSecret] = useState('85fd7ed50fb600505bc45f626a176ff410f828c6fe0a6ed6ed10903886a99c4d')
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -101,14 +108,17 @@ export default function MarketplacePage() {
   const [collectionName, setCollectionName] = useState('')
   const [collectionSymbol, setCollectionSymbol] = useState('')
   const [collectionUri, setCollectionUri] = useState('')
-  const [maxSupply, setMaxSupply] = useState('1000')
-  const [collectionPrice, setCollectionPrice] = useState('0.1')
   const [royalty, setRoyalty] = useState('500') // 5% in basis points
 
   // Mint form states
   const [selectedCollection, setSelectedCollection] = useState<NFTCollection | null>(null)
   const [selectedAdminCollection, setSelectedAdminCollection] = useState<NFTCollection | null>(null)
-  const [myMints, setMyMints] = useState<{ mint: PublicKey }[]>([])
+  const [selectedTypeName, setSelectedTypeName] = useState('')
+  const [myMints, setMyMints] = useState<{ mint: PublicKey; metadata?: any; name?: string; image?: string; collectionName?: string }[]>([])
+  // Preloaded type images for marketplace grid
+  const [typeImages, setTypeImages] = useState<Record<string, string>>({})
+  const [typeCategories, setTypeCategories] = useState<Record<string, string>>({})
+  const [selectedCategory, setSelectedCategory] = useState<'troop' | 'building' | 'utility' | null>(null)
 
   useEffect(() => {
     if (connected && publicKey) {
@@ -120,6 +130,35 @@ export default function MarketplacePage() {
   useEffect(() => {
     setIsMounted(true)
   }, [])
+
+  // Preload images for target collection item types
+  useEffect(() => {
+    const TARGET_COLLECTION_MINT = new PublicKey('2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r')
+    const target = collections.find(c => c.mint.equals(TARGET_COLLECTION_MINT))
+    if (!target) { setTypeImages({}); setTypeCategories({}); return }
+    const types = itemTypesByCollection[collectionKey(target)] || []
+    let cancelled = false
+    ;(async () => {
+      const entries: Record<string,string> = {}
+      const catEntries: Record<string,string> = {}
+      for (const t of types) {
+        try {
+          const res = await fetch(t.uri)
+          if (res.ok) {
+            const j = await res.json()
+            if (!cancelled) {
+              entries[t.name] = j.image || ''
+              const attr = Array.isArray(j.attributes) ? j.attributes.find((a:any)=> (a.trait_type||'').toLowerCase()==='type') : null
+              if (attr && typeof attr.value === 'string') catEntries[t.name] = attr.value.toLowerCase()
+            }
+          }
+        } catch {}
+      }
+      if (!cancelled) { setTypeImages(entries); setTypeCategories(catEntries) }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(collections.map(c=>c.mint.toBase58())), JSON.stringify(itemTypesByCollection)])
 
   const getMarketplacePDA = () => {
     return PublicKey.findProgramAddressSync(
@@ -160,7 +199,7 @@ export default function MarketplacePage() {
 
   const getItemTypePDA = (collectionPda: PublicKey, itemTypeName: string) => {
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('item_type'), collectionPda.toBuffer(), Buffer.from(itemTypeName)],
+      [Buffer.from('type'), collectionPda.toBuffer(), Buffer.from(itemTypeName)],
       PROGRAM_ID
     )
   }
@@ -225,35 +264,36 @@ export default function MarketplacePage() {
           // Check for NFTCollection / NFTItemType account discriminator
           const accountDiscriminator = Array.from(data.slice(0, 8))
           const isCollection = JSON.stringify(accountDiscriminator) === JSON.stringify(COLLECTION_ACCOUNT_DISCRIMINATOR)
-          const isItemType = JSON.stringify(accountDiscriminator) === JSON.stringify(ITEM_TYPE_ACCOUNT_DISCRIMINATOR)
           
-          if (!isCollection && !isItemType) continue
+          if (!isCollection) {
+            // Try to parse as NftType based on structure
+            try {
+              let offset = 8
+              if (data.length < offset + 32) continue
+              const collection = new PublicKey(data.slice(offset, offset + 32)); offset += 32
+              if (data.length < offset + 4) continue
+              const nameLen = data.readUInt32LE(offset); offset += 4
+              if (nameLen === 0 || nameLen > 100 || data.length < offset + nameLen + 4) continue
+              const name = data.slice(offset, offset + nameLen).toString('utf8'); offset += nameLen
+              const uriLen = data.readUInt32LE(offset); offset += 4
+              if (uriLen === 0 || uriLen > 500 || data.length < offset + uriLen + 8 + 8 + 8 + 1) continue
+              const uri = data.slice(offset, offset + uriLen).toString('utf8'); offset += uriLen
+              const price = Number(data.readBigUInt64LE(offset)); offset += 8
+              const max_supply = Number(data.readBigUInt64LE(offset)); offset += 8
+              const current_supply = Number(data.readBigUInt64LE(offset)); offset += 8
+              const bump = data.readUInt8(offset)
+              const key = collection.toString()
+              if (!itemTypesMap[key]) itemTypesMap[key] = []
+              itemTypesMap[key].push({ collection, name, uri, price, max_supply, current_supply, bump })
+              continue
+            } catch (_) {
+              continue
+            }
+          }
           
           let offset = 8 // Skip discriminator
 
-          if (isItemType) {
-            // Parse NFTItemType
-            const collection = new PublicKey(data.slice(offset, offset + 32))
-            offset += 32
-
-            const nameLength = data.readUInt32LE(offset); offset += 4
-            const name = data.slice(offset, offset + nameLength).toString('utf8'); offset += nameLength
-
-            const symbolLength = data.readUInt32LE(offset); offset += 4
-            const symbol = data.slice(offset, offset + symbolLength).toString('utf8'); offset += symbolLength
-
-            const uriLength = data.readUInt32LE(offset); offset += 4
-            const uri = data.slice(offset, offset + uriLength).toString('utf8'); offset += uriLength
-
-            const price = Number(data.readBigUInt64LE(offset)); offset += 8
-            const is_active = data.readUInt8(offset) === 1; offset += 1
-            const bump = data.readUInt8(offset)
-
-            const key = collection.toString()
-            if (!itemTypesMap[key]) itemTypesMap[key] = []
-            itemTypesMap[key].push({ collection, name, symbol, uri, price, is_active, bump })
-            continue
-          }
+          // If we reach here, it is a Collection
           
           // Parse admin (Pubkey)
           const admin = new PublicKey(data.slice(offset, offset + 32))
@@ -286,19 +326,10 @@ export default function MarketplacePage() {
           const uri = data.slice(offset, offset + uriLength).toString('utf8')
           offset += uriLength
           
-          // Ensure we have enough bytes for remaining fields (8+8+8+2+32+1+1 = 60 bytes)
-          if (data.length < offset + 60) continue
+          // Ensure we have enough bytes for remaining fields (2+32+1+1 = 36 bytes)
+          if (data.length < offset + 36) continue
           
           // Parse remaining numeric fields
-          const max_supply = Number(data.readBigUInt64LE(offset))
-          offset += 8
-          
-          const current_supply = Number(data.readBigUInt64LE(offset))
-          offset += 8
-          
-          const price = Number(data.readBigUInt64LE(offset))
-          offset += 8
-          
           const royalty = data.readUInt16LE(offset)
           offset += 2
           
@@ -312,17 +343,13 @@ export default function MarketplacePage() {
           
           // Validate collection data
           if (name && name.length > 0 && symbol && symbol.length > 0 && 
-              /^[\x20-\x7E]*$/.test(name) && /^[\x20-\x7E]*$/.test(symbol) && 
-              price > 0 && max_supply > 0) {
+              /^[\x20-\x7E]*$/.test(name) && /^[\x20-\x7E]*$/.test(symbol)) {
             
             const collectionObj: NFTCollection = {
               admin,
               name,
               symbol,
               uri,
-              max_supply,
-              current_supply,
-              price,
               royalty,
               mint,
               is_active,
@@ -334,8 +361,7 @@ export default function MarketplacePage() {
             console.log('✅ Found collection:', { 
               name, 
               symbol, 
-              price: price / LAMPORTS_PER_SOL + ' SOL',
-              supply: `${current_supply}/${max_supply}`,
+              royalty: royalty / 100 + '%',
               active: is_active
             })
           }
@@ -357,25 +383,28 @@ export default function MarketplacePage() {
   const createItemType = async () => {
     if (!publicKey || !signTransaction) return
     if (!selectedAdminCollection) { setError('Select a collection for type'); return }
-    if (!itemTypeName || !itemTypeSymbol || !collectionUri || !itemTypePrice) { setError('Fill item type fields'); return }
+    if (!itemTypeName || !collectionUri || !itemTypePrice) { setError('Fill item type fields'); return }
     setLoading(true); setError(null); setSuccess(null)
     try {
       const [collectionPDA] = getCollectionPDA(selectedAdminCollection.name)
       const priceLamports = Math.floor(parseFloat(itemTypePrice) * LAMPORTS_PER_SOL)
       const nameBuf = Buffer.from(itemTypeName, 'utf8')
-      const symBuf = Buffer.from(itemTypeSymbol, 'utf8')
       const uriBuf = Buffer.from(collectionUri, 'utf8')
+      const maxTypeSupply = BigInt(parseInt(itemTypeMaxSupply || '0'))
+      const disc = await instructionDiscriminator('create_nft_type')
       const data = Buffer.concat([
-        Buffer.from(CREATE_ITEM_TYPE_DISCRIMINATOR),
+        Buffer.from(disc),
         (()=>{const b=Buffer.alloc(4+nameBuf.length);b.writeUInt32LE(nameBuf.length,0);nameBuf.copy(b,4);return b})(),
-        (()=>{const b=Buffer.alloc(4+symBuf.length);b.writeUInt32LE(symBuf.length,0);symBuf.copy(b,4);return b})(),
         (()=>{const b=Buffer.alloc(4+uriBuf.length);b.writeUInt32LE(uriBuf.length,0);uriBuf.copy(b,4);return b})(),
         (()=>{const b=Buffer.alloc(8);b.writeBigUInt64LE(BigInt(priceLamports),0);return b})(),
+        (()=>{const b=Buffer.alloc(8);b.writeBigUInt64LE(maxTypeSupply,0);return b})(),
       ])
+      const [typePDA] = getItemTypePDA(collectionPDA, itemTypeName)
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
         keys: [
           { pubkey: collectionPDA, isSigner: false, isWritable: true },
+          { pubkey: typePDA, isSigner: false, isWritable: true },
           { pubkey: publicKey, isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
@@ -387,7 +416,7 @@ export default function MarketplacePage() {
       const sig = await connection.sendRawTransaction(signed.serialize())
       await connection.confirmTransaction(sig, 'confirmed')
       setSuccess('Item type created')
-      setItemTypeName(''); setItemTypeSymbol(''); setItemTypePrice('0.1')
+      setItemTypeName(''); setItemTypePrice('0.1'); setItemTypeMaxSupply('1000')
       await fetchCollections()
     } catch (e) {
       setError('Failed to create item type: ' + (e as Error).message)
@@ -398,16 +427,116 @@ export default function MarketplacePage() {
     if (!publicKey) return
     try {
       const resp = await connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID })
-      const mints: { mint: PublicKey }[] = []
+      const nfts: { mint: PublicKey; metadata?: any; name?: string; image?: string; collectionName?: string }[] = []
+      
       for (const it of resp.value) {
         const info: any = it.account.data.parsed.info
         const amount = Number(info.tokenAmount.amount)
         const decimals = Number(info.tokenAmount.decimals)
+        
         if (decimals === 0 && amount > 0) {
-          mints.push({ mint: new PublicKey(info.mint) })
+          const mint = new PublicKey(info.mint)
+          
+          try {
+            // Get metadata PDA
+            const [metadataPDA] = getMetadataPDA(mint)
+            const metadataAccount = await connection.getAccountInfo(metadataPDA)
+            
+            if (metadataAccount) {
+              // Parse metadata
+              const d = metadataAccount.data
+              let off = 1 // key
+              off += 32 // update authority
+              off += 32 // mint
+              // name
+              const nameLen = d.readUInt32LE(off); off += 4
+              const name = d.slice(off, off + nameLen).toString('utf8'); off += nameLen
+              // symbol
+              const symbolLen = d.readUInt32LE(off); off += 4
+              const _symbol = d.slice(off, off + symbolLen).toString('utf8'); off += symbolLen
+              // uri
+              const uriLen = d.readUInt32LE(off); off += 4
+              const uri = d.slice(off, off + uriLen).toString('utf8'); off += uriLen
+              // seller fee
+              off += 2
+              // creators option
+              const hasCreators = d.readUInt8(off); off += 1
+              if (hasCreators === 1) {
+                const creatorsLen = d.readUInt32LE(off); off += 4
+                // each creator: pubkey(32) + verified(1) + share(1)
+                off += creatorsLen * (32 + 1 + 1)
+              }
+              // primary_sale_happened (bool)
+              off += 1
+              // is_mutable (bool)
+              off += 1
+              // edition_nonce: Option<u8>
+              const hasEditionNonce = d.readUInt8(off); off += 1
+              if (hasEditionNonce === 1) {
+                off += 1 // skip nonce value
+              }
+              // token_standard: Option<u8>
+              const hasTokenStandard = d.readUInt8(off); off += 1
+              if (hasTokenStandard === 1) {
+                off += 1 // skip token_standard value
+              }
+              // collection option (DataV2.collection)
+              let belongsToOurCollection = false
+              let matchedCollectionName: string | undefined
+              const hasCollectionOpt = d.readUInt8(off); off += 1
+              if (hasCollectionOpt === 1) {
+                // Collection { verified: bool, key: Pubkey }
+                const _verified = d.readUInt8(off); off += 1
+                const collectionMintBuf = d.slice(off, off + 32); off += 32
+                const collectionMint = new PublicKey(collectionMintBuf)
+                for (const c of collections) {
+                  if (c.mint.equals(collectionMint)) {
+                    belongsToOurCollection = true
+                    matchedCollectionName = c.name
+                    break
+                  }
+                }
+              }
+              // uses: Option<Uses> (skip if present to avoid bounds issues)
+              if (off < d.length) {
+                const hasUses = d.readUInt8(off); off += 1
+                if (hasUses === 1) {
+                  // Uses { use_method: u8, remaining: u64, total: u64 }
+                  off += 1 + 8 + 8
+                }
+              }
+              
+              // Fetch metadata JSON (best effort)
+              let metadataJson = null
+              try {
+                const res = await fetch(uri)
+                if (res.ok) {
+                  metadataJson = await res.json()
+                }
+              } catch {}
+              
+              if (belongsToOurCollection) {
+                nfts.push({ 
+                  mint, 
+                  metadata: metadataJson,
+                  name: name.replace(/\0+$/, ''),
+                  image: metadataJson?.image || '/placeholder.svg',
+                  collectionName: matchedCollectionName,
+                })
+                console.log('✅ Found NFT from our collection:', { mint: mint.toString(), name })
+              } else {
+                console.log('❌ NFT not from our collection:', { mint: mint.toString(), name })
+              }
+            } else {
+              // No metadata found
+            }
+          } catch (e) {
+            console.warn('Failed to parse metadata for mint:', mint.toString(), e)
+          }
         }
       }
-      setMyMints(mints)
+      
+      setMyMints(nfts)
     } catch (e) {
       console.error(e)
     }
@@ -424,8 +553,9 @@ export default function MarketplacePage() {
       const [marketplacePDA] = getMarketplacePDA()
       
       // Create instruction data
+      const disc = await instructionDiscriminator('initialize_marketplace')
       const instructionData = Buffer.concat([
-        Buffer.from(MARKETPLACE_DISCRIMINATOR),
+        Buffer.from(disc),
         (() => {
           const buf = Buffer.alloc(2)
           buf.writeUInt16LE(500) // 5% fee
@@ -477,8 +607,9 @@ export default function MarketplacePage() {
        const mintKeypair = Keypair.generate()
        console.log('Generated mint keypair:', mintKeypair.publicKey.toString())
        
-       // Use original collection name (no timestamp needed)
-       const uniqueCollectionName = collectionName
+       // Use original collection name with random suffix
+       const randomSuffix = Math.random().toString(36).substring(2, 15)
+       const uniqueCollectionName = `${collectionName}_${randomSuffix}`
        console.log('Using collection name:', uniqueCollectionName)
       
       // Derive PDAs with unique collection name
@@ -491,59 +622,36 @@ export default function MarketplacePage() {
         marketplace: marketplacePDA.toString(),
         collection: collectionPDA.toString(),
         metadata: metadataPDA.toString(),
-        masterEdition: masterEditionPDA.toString()
+        masterEdition: masterEditionPDA.toString(),
+        mint: mintKeypair.publicKey.toString()
       })
+      
+      // Check if collection PDA already exists
+      const collectionAccountInfo = await connection.getAccountInfo(collectionPDA)
+      if (collectionAccountInfo) {
+        throw new Error(`Collection PDA already exists: ${collectionPDA.toString()}`)
+      }
+      
+      // Check if mint already exists
+      const mintAccountInfo = await connection.getAccountInfo(mintKeypair.publicKey)
+      if (mintAccountInfo) {
+        throw new Error(`Mint already exists: ${mintKeypair.publicKey.toString()}`)
+      }
       
              // Create transaction
        const transaction = new Transaction()
        
-       // 1. Create mint account (kontrat mint'i oluşturuyor ama 1 token mint etmiyor)
-       const mintRent = await getMinimumBalanceForRentExemptMint(connection)
-       transaction.add(
-         SystemProgram.createAccount({
-           fromPubkey: publicKey,
-           newAccountPubkey: mintKeypair.publicKey,
-           space: MINT_SIZE,
-           lamports: mintRent,
-           programId: TOKEN_PROGRAM_ID,
-         })
-       )
-       
-       // 2. Initialize mint
-       transaction.add(
-         createInitializeMintInstruction(
-           mintKeypair.publicKey,
-           0, // decimals
-           publicKey, // mint authority
-           publicKey, // freeze authority
-           TOKEN_PROGRAM_ID
-         )
-       )
-       
-       // 3. Create associated token account for admin
-       const adminTokenAccount = await getAssociatedTokenAddress(mintKeypair.publicKey, publicKey)
-       transaction.add(
-         createAssociatedTokenAccountInstruction(
-           publicKey, // payer
-           adminTokenAccount, // associated token account
-           publicKey, // owner (admin)
-           mintKeypair.publicKey, // mint
-           TOKEN_PROGRAM_ID,
-           ASSOCIATED_TOKEN_PROGRAM_ID
-         )
-       )
-       
-       // 4. Mint 1 token to admin (master edition için gerekli)
-       transaction.add(
-         createMintToInstruction(
-           mintKeypair.publicKey, // mint
-           adminTokenAccount, // destination
-           publicKey, // authority
-           1, // amount (1 token for master edition)
-           [], // multiSigners
-           TOKEN_PROGRAM_ID
-         )
-       )
+       // Anchor will handle both mint creation and ATA creation
+       // No need to manually create ATA
+      
+      // Calculate ATA address for admin
+      const adminTokenAccount = await getAssociatedTokenAddress(
+        mintKeypair.publicKey, // mint
+        publicKey, // owner
+        false, // allowOwnerOffCurve
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
       
       // 3. Create collection instruction data with unique name
       const nameBuffer = Buffer.from(uniqueCollectionName, 'utf8') // Use unique name
@@ -556,9 +664,13 @@ export default function MarketplacePage() {
         uri: uriBuffer.length
       })
       
+      // Use Anchor's instruction discriminator from IDL
+      const disc2 = Buffer.from([39, 179, 4, 147, 128, 226, 252, 134])
+      
+      // Build instruction data - Anchor uses Borsh serialization
       const instructionData = Buffer.concat([
-        Buffer.from(COLLECTION_DISCRIMINATOR),
-        // collection_name (String)
+        disc2,
+        // collection_name (String) - Borsh format: 4-byte length + data
         (() => {
           const buf = Buffer.alloc(4 + nameBuffer.length)
           buf.writeUInt32LE(nameBuffer.length, 0)
@@ -579,19 +691,7 @@ export default function MarketplacePage() {
           uriBuffer.copy(buf, 4)
           return buf
         })(),
-        // max_supply (u64)
-        (() => {
-          const buf = Buffer.alloc(8)
-          buf.writeBigUInt64LE(BigInt(maxSupply), 0)
-          return buf
-        })(),
-        // price (u64)
-        (() => {
-          const buf = Buffer.alloc(8)
-          buf.writeBigUInt64LE(BigInt(Math.floor(parseFloat(collectionPrice) * LAMPORTS_PER_SOL)), 0)
-          return buf
-        })(),
-        // royalty (u16)
+        // royalty (u16) - Borsh format: little-endian
         (() => {
           const buf = Buffer.alloc(2)
           buf.writeUInt16LE(parseInt(royalty), 0)
@@ -607,11 +707,13 @@ export default function MarketplacePage() {
             { pubkey: marketplacePDA, isSigner: false, isWritable: true },
             { pubkey: collectionPDA, isSigner: false, isWritable: true },
             { pubkey: mintKeypair.publicKey, isSigner: true, isWritable: true },
+            { pubkey: adminTokenAccount, isSigner: false, isWritable: true },
             { pubkey: metadataPDA, isSigner: false, isWritable: true },
             { pubkey: masterEditionPDA, isSigner: false, isWritable: true },
             { pubkey: publicKey, isSigner: true, isWritable: true },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
             { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
             { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
           ],
@@ -639,8 +741,6 @@ export default function MarketplacePage() {
       setCollectionName('')
       setCollectionSymbol('')
       setCollectionUri('')
-      setMaxSupply('1000')
-      setCollectionPrice('0.1')
       setRoyalty('500')
       
       await fetchCollections()
@@ -673,8 +773,9 @@ export default function MarketplacePage() {
       // Program will create mint and ATA as needed
       // Build instruction data: only item_type_name per IDL
       const nameBuffer = Buffer.from(itemTypeName, 'utf8')
+      const disc = await instructionDiscriminator('mint_nft_from_collection')
       const instructionData = Buffer.concat([
-        Buffer.from(MINT_NFT_DISCRIMINATOR),
+        Buffer.from(disc),
         (() => {
           const buf = Buffer.alloc(4 + nameBuffer.length)
           buf.writeUInt32LE(nameBuffer.length, 0)
@@ -684,11 +785,13 @@ export default function MarketplacePage() {
       ])
       
       // 1. Add mint NFT instruction
+      const [typePDA] = getItemTypePDA(collectionPDA, itemTypeName)
       transaction.add(
         new TransactionInstruction({
           programId: PROGRAM_ID,
           keys: [
             { pubkey: collectionPDA, isSigner: false, isWritable: true },
+            { pubkey: typePDA, isSigner: false, isWritable: true },
             { pubkey: nftMintKeypair.publicKey, isSigner: true, isWritable: true },
             { pubkey: buyerTokenAccount, isSigner: false, isWritable: true },
             { pubkey: nftMetadataPDA, isSigner: false, isWritable: true },
@@ -738,69 +841,25 @@ export default function MarketplacePage() {
   const isAdmin = marketplace && publicKey && marketplace.admin.equals(publicKey)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-8">
+    <div className="min-h-[100dvh] bg-white text-neutral-800">
       <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            NFT Marketplace
-          </h1>
-          {isMounted && (
-            <WalletMultiButton className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded" />
-          )}
+        <div className="border-b border-black px-4 h-16 flex items-center justify-between">
+          <h1 className="lowercase text-lg">nft marketplace</h1>
+          {/* wallet button removed from marketplace header as requested */}
         </div>
-        <div className="mb-6 flex gap-2">
-          <button onClick={() => setActiveTab('marketplace')} className={`px-3 py-1 rounded ${activeTab==='marketplace'?'bg-white/20':'bg-white/10 hover:bg-white/20'}`}>Marketplace</button>
-          <button onClick={() => setActiveTab('my')} className={`px-3 py-1 rounded ${activeTab==='my'?'bg-white/20':'bg-white/10 hover:bg-white/20'}`}>My NFTs</button>
+        <div className="border-b border-black px-4 h-12 flex items-center gap-4 lowercase text-sm">
+          <button onClick={() => setActiveTab('marketplace')} className={`underline-offset-4 ${activeTab==='marketplace'?'underline':''}`}>marketplace</button>
+          <button onClick={() => setActiveTab('inventory')} className={`underline-offset-4 ${activeTab==='inventory'?'underline':''}`}>inventory</button>
           {isAdmin && (
-            <button onClick={() => setActiveTab('admin')} className={`px-3 py-1 rounded ${activeTab==='admin'?'bg-white/20':'bg-white/10 hover:bg-white/20'}`}>Admin</button>
+            <button onClick={() => setActiveTab('admin')} className={`underline-offset-4 ${activeTab==='admin'?'underline':''}`}>admin</button>
           )}
         </div>
-
-        {!connected ? (
-          <div className="text-center py-20">
-            <h2 className="text-2xl font-semibold mb-4">Connect your wallet to start</h2>
-            <p className="text-gray-300">You need to connect your Solana wallet to interact with the marketplace.</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
+        
+        <div className="space-y-8">
             {/* Success/Error Messages */}
-            {success && (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
-                <p className="text-green-300">{success}</p>
-              </div>
-            )}
+            {success && (<div className="px-4 py-2 text-green-700 text-sm">{success}</div>)}
+            {error && (<div className="px-4 py-2 text-red-700 text-sm">{error}</div>)}
             
-            {error && (
-              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
-                <p className="text-red-300">{error}</p>
-              </div>
-            )}
-
-            {/* Marketplace Status */}
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-              <h2 className="text-2xl font-semibold mb-4">Marketplace Status</h2>
-              {marketplace ? (
-                <div className="space-y-2">
-                  <p className="text-green-300">✅ Marketplace is initialized</p>
-                  <p className="text-sm text-gray-300">Admin: {marketplace.admin.toString().slice(0, 8)}...</p>
-                  <p className="text-sm text-gray-300">Fee: {marketplace.fee_bps / 100}%</p>
-                  <p className="text-sm text-gray-300">Total Collections: {marketplace.total_collections}</p>
-                  {isAdmin && <p className="text-yellow-300">🔑 You are the marketplace admin</p>}
-                </div>
-              ) : (
-                <div>
-                  <p className="text-red-300 mb-4">❌ Marketplace not initialized</p>
-                  <button
-                    onClick={initializeMarketplace}
-                    disabled={loading}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded"
-                  >
-                    {loading ? 'Initializing...' : 'Initialize Marketplace'}
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* Admin Tab */}
             {isAdmin && activeTab==='admin' && (
               <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
@@ -827,21 +886,7 @@ export default function MarketplacePage() {
                     onChange={(e) => setCollectionUri(e.target.value)}
                     className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300"
                   />
-                  <input
-                    type="number"
-                    placeholder="Max Supply"
-                    value={maxSupply}
-                    onChange={(e) => setMaxSupply(e.target.value)}
-                    className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Price (SOL)"
-                    value={collectionPrice}
-                    onChange={(e) => setCollectionPrice(e.target.value)}
-                    className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300"
-                  />
+
                   <input
                     type="number"
                     placeholder="Royalty (basis points, e.g. 500 = 5%)"
@@ -852,14 +897,14 @@ export default function MarketplacePage() {
                 </div>
                 <button
                   onClick={createCollection}
-                  disabled={loading || !marketplace || !collectionName || !collectionSymbol || !collectionUri || !maxSupply || !collectionPrice || !royalty}
+                  disabled={loading || !marketplace || !collectionName || !collectionSymbol || !collectionUri || !royalty}
                   className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded"
                 >
                   {loading ? 'Creating...' : 'Create Collection'}
                 </button>
               </div>
             )}
-
+ 
             {/* Pinata Uploader - Admin only */}
             {isAdmin && activeTab==='admin' && (
               <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
@@ -898,7 +943,7 @@ export default function MarketplacePage() {
                       if(!metaRes.ok) throw new Error('Metadata upload failed')
                       const metaJson = await metaRes.json()
                       const metaCid = metaJson.IpfsHash
-                      const uri = `ipfs://${metaCid}`
+                      const uri = `https://gateway.pinata.cloud/ipfs/${metaCid}`
                       setSuccess(`Uploaded. URI: ${uri}`)
                       setCollectionUri(uri)
                     }catch(e){ setError((e as Error).message) } finally { setLoading(false) }
@@ -908,7 +953,180 @@ export default function MarketplacePage() {
                 >Upload to Pinata</button>
               </div>
             )}
-
+ 
+            {/* Marketplace (single collection types) */}
+            {activeTab==='marketplace' && (
+              <div>
+                <div className="border-y border-black px-4 py-3 flex items-center justify-between bg-white">
+                  <div className="lowercase text-sm flex items-center gap-4">
+                    <span>types</span>
+                    <div className="flex items-center gap-3 text-[12px]">
+                      <button onClick={()=>setSelectedCategory(null)} className={`underline-offset-4 ${selectedCategory===null?'underline':''}`}>all</button>
+                      <button onClick={()=>setSelectedCategory('troop')} className={`underline-offset-4 ${selectedCategory==='troop'?'underline':''}`}>troop</button>
+                      <button onClick={()=>setSelectedCategory('building')} className={`underline-offset-4 ${selectedCategory==='building'?'underline':''}`}>building</button>
+                      <button onClick={()=>setSelectedCategory('utility')} className={`underline-offset-4 ${selectedCategory==='utility'?'underline':''}`}>utility</button>
+                    </div>
+                  </div>
+                  <button onClick={fetchCollections} disabled={loading} className="text-sm underline disabled:opacity-50">refresh</button>
+                </div>
+                {(() => {
+                  const TARGET_COLLECTION_MINT = new PublicKey('2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r')
+                  const target = collections.find(c => c.mint.equals(TARGET_COLLECTION_MINT))
+                  if (!target) return <div className="p-6 text-sm text-neutral-600 lowercase">target collection not found</div>
+                  let types = itemTypesByCollection[collectionKey(target)] || []
+                  if (selectedCategory) {
+                    types = types.filter(t => (typeCategories[t.name]||'') === selectedCategory)
+                  }
+                  return (
+                    <div className="p-6 border-b border-black">
+                      {types.length === 0 ? (
+                        <div className="text-sm text-neutral-600 lowercase">no item types</div>
+                      ) : (
+                        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {types.map((it, i) => (
+                            <li key={i} className="group border border-black rounded-sm overflow-hidden bg-white relative">
+                              <div className="absolute inset-0 hidden group-hover:flex items-end justify-end p-2">
+                                <button onClick={() => { setSelectedCollection(target); setSelectedTypeName(it.name) }} className="text-[11px] bg-black text-white px-2 py-1 rounded-sm">mint</button>
+                              </div>
+                              <div className="block w-full text-left">
+                                <div className="aspect-square w-full bg-white flex items-center justify-center">
+                                  {typeImages[it.name] ? (
+                                    <img src={typeImages[it.name]} alt={it.name} className="h-full w-full object-contain p-3" />
+                                  ) : (
+                                    <div className="text-[11px] text-neutral-500">{it.name}</div>
+                                  )}
+                                </div>
+                                <div className="px-3 py-2 border-t border-black">
+                                  <div className="text-[12px] lowercase text-neutral-700 flex items-center justify-between">
+                                    <span>{it.name}</span>
+                                    <span>{(it.price / LAMPORTS_PER_SOL).toFixed(3)} sol</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+ 
+            {/* Mint NFT Modal */}
+            {selectedCollection && activeTab==='marketplace' && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full mx-4 border border-white/20">
+                  <h2 className="text-2xl font-semibold mb-4">Mint NFT from {selectedCollection.name}</h2>
+                  <div className="space-y-4 mb-4">
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <p className="text-sm text-gray-300 mb-2">Selected Item Type:</p>
+                      <div className="text-white">{selectedTypeName || '-'}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => mintNFT(selectedCollection, selectedTypeName)}
+                      disabled={loading || !selectedTypeName}
+                      className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded"
+                    >
+                      {loading ? 'Minting...' : 'Mint'}
+                    </button>
+                    <button
+                      onClick={() => { setSelectedCollection(null); setSelectedTypeName('') }}
+                      disabled={loading}
+                      className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white font-bold py-2 px-4 rounded"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+ 
+            {/* My NFTs Tab */}
+            {activeTab==='inventory' && (
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-semibold">Inventory</h2>
+                  <button onClick={fetchMyNfts} disabled={loading} className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white font-bold py-1 px-3 rounded text-sm">Refresh</button>
+                </div>
+                {myMints.length===0 ? (
+                  <p className="text-gray-300">No NFTs found in this wallet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {myMints.filter(n=>{
+                      // keep only target collection NFTs by stored collectionName equals target collection name (set during parsing)
+                      const TARGET_COLLECTION_MINT = '2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r'
+                      return n.collectionName && collections.find(c=>c.mint.toBase58()===TARGET_COLLECTION_MINT && c.name===n.collectionName)
+                    }).map((nft, i)=>(
+                      <div key={i} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <a href={`/app/marketplace/nft/${nft.mint.toBase58()}`} className="block group">
+                          {nft.image && nft.image !== '/placeholder.svg' ? (
+                            <div className="mb-3">
+                              <img 
+                                src={nft.image} 
+                                alt={nft.name || 'NFT'} 
+                                className="w-full h-32 object-cover rounded group-hover:opacity-90 transition"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = '/placeholder.svg'
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="mb-3 h-32 bg-gray-700 rounded flex items-center justify-center">
+                              <span className="text-gray-400 text-sm">No Image</span>
+                            </div>
+                          )}
+                          
+                          <div className="space-y-2">
+                            <div>
+                              <div className="text-sm font-semibold text-white">
+                                {nft.name || 'Unknown NFT'}
+                              </div>
+                              {nft.metadata?.description && (
+                                <div className="text-xs text-gray-300 mt-1 line-clamp-2">
+                                  {nft.metadata.description}
+                                </div>
+                              )}
+                              <div className="text-xs text-blue-300 mt-1">
+                                Collection: {nft.collectionName || 'Unknown'}
+                              </div>
+                            </div>
+                            
+                            <div className="text-xs text-gray-400">
+                              <div className="font-mono break-all">{nft.mint.toBase58().slice(0, 8)}...</div>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <a 
+                                href={`https://solscan.io/token/${nft.mint.toBase58()}?cluster=devnet`} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="text-indigo-300 hover:underline text-xs"
+                              >
+                                View on Solscan
+                              </a>
+                              {nft.metadata?.external_url && (
+                                <a 
+                                  href={nft.metadata.external_url} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="text-green-300 hover:underline text-xs"
+                                >
+                                  External Link
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+ 
             {/* Admin: Select collection and create item type */}
             {isAdmin && activeTab==='admin' && (
               <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
@@ -926,148 +1144,116 @@ export default function MarketplacePage() {
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <input type="text" placeholder="Item Type Name" value={itemTypeName} onChange={e=>setItemTypeName(e.target.value)} className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300" />
-                  <input type="text" placeholder="Item Type Symbol" value={itemTypeSymbol} onChange={e=>setItemTypeSymbol(e.target.value)} className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300" />
-                  <input type="text" placeholder="Item Type URI (from Pinata)" value={collectionUri} onChange={e=>setCollectionUri(e.target.value)} className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300 md:col-span-2" />
-                  <input type="number" step="0.01" placeholder="Price (SOL)" value={itemTypePrice} onChange={e=>setItemTypePrice(e.target.value)} className="bg-white/20 border border-white/30 rounded px-3 py-2 text-white placeholder-gray-300" />
+                <div className="flex gap-3">
+                  <button onClick={()=>setShowTypeModal(true)} disabled={!selectedAdminCollection} className="text-sm underline disabled:opacity-50">New Item Type</button>
                 </div>
-                <button onClick={createItemType} disabled={loading || !selectedAdminCollection} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded">Create Item Type</button>
-              </div>
-            )}
- 
-            {/* Collections List (Marketplace tab) */}
-            {activeTab==='marketplace' && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-semibold">NFT Collections</h2>
-                <button
-                  onClick={fetchCollections}
-                  disabled={loading}
-                  className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white font-bold py-1 px-3 rounded text-sm"
-                >
-                  Refresh
-                </button>
-              </div>
-              
-              {collections.length === 0 ? (
-                <p className="text-gray-300">No collections found. {isAdmin ? 'Create one above!' : 'Admin can create collections.'}</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {collections.map((collection, index) => (
-                    <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                      <h3 className="text-lg font-semibold mb-2">{collection.name}</h3>
-                      <p className="text-sm text-gray-300 mb-1">Symbol: {collection.symbol}</p>
-                      <p className="text-sm text-gray-300 mb-1">
-                        Price: {(collection.price / LAMPORTS_PER_SOL).toFixed(3)} SOL
-                      </p>
-                      <p className="text-sm text-gray-300 mb-1">
-                        Supply: {collection.current_supply}/{collection.max_supply}
-                      </p>
-                      <p className="text-sm text-gray-300 mb-1">
-                        Royalty: {(collection.royalty / 100).toFixed(1)}%
-                      </p>
-                      <p className="text-sm text-gray-300 mb-1">
-                        Status: {collection.is_active ? 
-                          <span className="text-green-300">Active</span> : 
-                          <span className="text-red-300">Inactive</span>
-                        }
-                      </p>
-                      {collection.uri && (
-                        <p className="text-xs text-gray-400 mb-4 truncate" title={collection.uri}>
-                          URI: {collection.uri}
-                        </p>
-                      )}
-                      {/* Item types */}
-                      <div className="mt-3 space-y-2">
-                        <p className="text-sm font-semibold">Item Types</p>
-                        {(itemTypesByCollection[collectionKey(collection)] || []).length === 0 ? (
-                          <p className="text-xs text-gray-400">No item types yet.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {itemTypesByCollection[collectionKey(collection)]!.map((it, i) => (
-                              <div key={i} className="flex items-center justify-between bg-white/10 rounded px-2 py-1">
-                                <div>
-                                  <div className="text-sm">{it.name}</div>
-                                  <div className="text-xs text-gray-300">{(it.price / LAMPORTS_PER_SOL).toFixed(3)} SOL</div>
-                                </div>
-                                <button
-                                  onClick={() => setSelectedCollection(collection)}
-                                  disabled={loading || !collection.is_active || collection.current_supply >= collection.max_supply}
-                                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-bold px-3 py-1 rounded text-sm"
-                                >
-                                  Select
-                                </button>
+
+                {showTypeModal && (
+                  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-sm w-full max-w-2xl border border-black overflow-hidden">
+                      <div className="px-4 py-3 border-b border-black flex items-center justify-between">
+                        <div className="lowercase text-sm">create item type</div>
+                        <button onClick={()=>setShowTypeModal(false)} className="text-sm underline">close</button>
+                      </div>
+                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-3">
+                          <div className="lowercase text-xs text-neutral-600">pinata credentials</div>
+                          <input type="password" placeholder="PINATA API KEY" value={pinApiKey} onChange={e=>setPinApiKey(e.target.value)} className="border border-black px-2 py-1 text-sm w-full" />
+                          <input type="password" placeholder="PINATA API SECRET" value={pinApiSecret} onChange={e=>setPinApiSecret(e.target.value)} className="border border-black px-2 py-1 text-sm w-full" />
+                          <div className="lowercase text-xs text-neutral-600">image</div>
+                          <input type="file" accept="image/*" onChange={e=>setTypeImageFile(e.target.files?.[0] ?? null)} className="text-sm" />
+                          <div className="lowercase text-xs text-neutral-600">basic info</div>
+                          <input type="text" placeholder="item type name" value={itemTypeName} onChange={e=>setItemTypeName(e.target.value)} className="border border-black px-2 py-1 text-sm w-full" />
+                          <input type="text" placeholder="symbol" value={itemTypeSymbol} onChange={e=>setItemTypeSymbol(e.target.value)} className="border border-black px-2 py-1 text-sm w-full" />
+                          <textarea placeholder="description" value={typeDescription} onChange={e=>setTypeDescription(e.target.value)} className="border border-black px-2 py-1 text-sm w-full h-20" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="number" step="0.01" placeholder="price (SOL)" value={itemTypePrice} onChange={e=>setItemTypePrice(e.target.value)} className="border border-black px-2 py-1 text-sm w-full" />
+                            <input type="number" placeholder="max supply" value={itemTypeMaxSupply} onChange={e=>setItemTypeMaxSupply(e.target.value)} className="border border-black px-2 py-1 text-sm w-full" />
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="lowercase text-xs text-neutral-600">attributes</div>
+                            <button onClick={()=>setTypeAttributes(prev=>[...prev,{trait_type:'',value:''}])} className="text-xs underline">add</button>
+                          </div>
+                          <div className="space-y-2 max-h-56 overflow-auto">
+                            {typeAttributes.map((a, idx)=> (
+                              <div key={idx} className="grid grid-cols-2 gap-2">
+                                <input value={a.trait_type} onChange={e=>{
+                                  const v=e.target.value; setTypeAttributes(prev=>prev.map((x,i)=>i===idx?{...x,trait_type:v}:x))
+                                }} placeholder="trait" className="border border-black px-2 py-1 text-sm w-full" />
+                                <input value={a.value} onChange={e=>{
+                                  const v=e.target.value; setTypeAttributes(prev=>prev.map((x,i)=>i===idx?{...x,value:v}:x))
+                                }} placeholder="value" className="border border-black px-2 py-1 text-sm w-full" />
                               </div>
                             ))}
                           </div>
-                        )}
+                          <div className="pt-2">
+                            <button
+                              onClick={async()=>{
+                                try{
+                                  if(!selectedAdminCollection){ setError('select collection'); return }
+                                  if(!pinApiKey || !pinApiSecret){ setError('enter pinata api key/secret'); return }
+                                  if(!typeImageFile){ setError('select image'); return }
+                                  if(!itemTypeName){ setError('enter item type name'); return }
+                                  setLoading(true); setError(null); setSuccess(null)
+                                  // 1) upload image
+                                  const fd = new FormData()
+                                  fd.append('file', typeImageFile)
+                                  const imgRes = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+                                    method:'POST',
+                                    headers:{ 'pinata_api_key': pinApiKey, 'pinata_secret_api_key': pinApiSecret },
+                                    body: fd
+                                  })
+                                  if(!imgRes.ok) throw new Error('image upload failed')
+                                  const imgJson = await imgRes.json()
+                                  const imgCid = imgJson.IpfsHash
+                                  const imageGateway = `https://gateway.pinata.cloud/ipfs/${imgCid}`
+                                  // 2) upload metadata json (requested schema)
+                                  const creatorAddr = selectedAdminCollection?.admin.toBase58() || ''
+                                  const metadata = {
+                                    name: itemTypeName,
+                                    symbol: itemTypeSymbol,
+                                    description: typeDescription,
+                                    image: imageGateway,
+                                    attributes: typeAttributes,
+                                    properties: {
+                                      files: [
+                                        { uri: imageGateway, type: 'image/jpeg' }
+                                      ],
+                                      category: 'image',
+                                      creators: [
+                                        { address: creatorAddr, share: 100 }
+                                      ]
+                                    }
+                                  }
+                                  const metaRes = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+                                    method:'POST',
+                                    headers:{ 'Content-Type':'application/json', 'pinata_api_key': pinApiKey, 'pinata_secret_api_key': pinApiSecret },
+                                    body: JSON.stringify(metadata)
+                                  })
+                                  if(!metaRes.ok) throw new Error('metadata upload failed')
+                                  const metaJson = await metaRes.json()
+                                  const uri = `https://gateway.pinata.cloud/ipfs/${metaJson.IpfsHash}`
+                                  setCollectionUri(uri)
+                                  // 3) call on-chain createItemType
+                                  await createItemType()
+                                  setShowTypeModal(false)
+                                }catch(e){ setError((e as Error).message) } finally { setLoading(false) }
+                              }}
+                              disabled={loading}
+                              className="text-sm underline"
+                            >upload & create</button>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            )}
-
-            {/* Mint NFT Modal */}
-            {selectedCollection && activeTab==='marketplace' && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full mx-4 border border-white/20">
-                  <h2 className="text-2xl font-semibold mb-4">Mint NFT from {selectedCollection.name}</h2>
-                  <div className="space-y-4 mb-4">
-                    <div className="bg-white/10 rounded-lg p-4">
-                      <p className="text-sm text-gray-300 mb-2">NFT Details:</p>
-                      <p className="text-white">Name: {selectedCollection.name} #{selectedCollection.current_supply + 1}</p>
-                      <p className="text-white">Symbol: {selectedCollection.symbol}</p>
-                      <p className="text-white">Price: {(selectedCollection.price / LAMPORTS_PER_SOL).toFixed(3)} SOL</p>
-                      <p className="text-white">Supply: {selectedCollection.current_supply + 1}/{selectedCollection.max_supply}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => mintNFT(selectedCollection, (itemTypesByCollection[collectionKey(selectedCollection)] || [])[0]?.name || '')}
-                      disabled={loading || !(itemTypesByCollection[collectionKey(selectedCollection)]||[]).length}
-                      className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded"
-                    >
-                      {loading ? 'Minting...' : `Mint for ${(selectedCollection.price / LAMPORTS_PER_SOL).toFixed(3)} SOL`}
-                    </button>
-                    <button
-                      onClick={() => setSelectedCollection(null)}
-                      disabled={loading}
-                      className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white font-bold py-2 px-4 rounded"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* My NFTs Tab */}
-            {activeTab==='my' && (
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-semibold">My NFTs</h2>
-                  <button onClick={fetchMyNfts} disabled={loading} className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white font-bold py-1 px-3 rounded text-sm">Refresh</button>
-                </div>
-                {myMints.length===0 ? (
-                  <p className="text-gray-300">No NFTs found in this wallet (decimals 0 tokens).</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {myMints.map((m, i)=>(
-                      <div key={i} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                        <div className="text-xs text-gray-300 mb-2">Mint</div>
-                        <div className="font-mono text-sm break-all">{m.mint.toBase58()}</div>
-                        <a href={`https://solscan.io/token/${m.mint.toBase58()}?cluster=devnet`} target="_blank" rel="noreferrer" className="mt-3 inline-block text-indigo-300 hover:underline text-sm">View on Solscan</a>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>
             )}
           </div>
-        )}
+         
       </div>
     </div>
   )
