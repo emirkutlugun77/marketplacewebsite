@@ -1,0 +1,164 @@
+"use client"
+
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import WalletConnect from "@/components/wallet-connect"
+
+export default function Page() {
+  return (
+    <main
+      className={cn("min-h-[100dvh] flex flex-col", "relative overflow-hidden")}
+      style={{
+        background: "radial-gradient(85% 65% at 50% 30%, #ffffff 0%, #f7f8fb 100%)",
+      }}
+    >
+      {/* Decorative corner lines */}
+      <div className="pointer-events-none absolute left-4 bottom-10 sm:left-10 sm:bottom-14 z-[1]">
+        <span className="block h-px w-40 sm:w-48 bg-black/25 rotate-[-8deg] shadow-[0_0_0_1px_rgba(0,0,0,0.02)]" />
+        <span className="mt-2 block text-[10px] sm:text-xs tracking-[0.18em] uppercase text-neutral-500">
+          web3 simplicity
+        </span>
+      </div>
+      <div className="pointer-events-none absolute right-6 top-8 sm:right-14 sm:top-10 z-[1]">
+        <span className="block h-px w-56 sm:w-72 bg-black/20 rotate-[18deg] shadow-[0_0_0_1px_rgba(0,0,0,0.02)]" />
+      </div>
+
+      {/* Top Bar */}
+      <header className="w-full">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="font-semibold tracking-tight text-lg sm:text-xl">
+            <span className="font-sans">mini</span>{" "}
+            <span className="font-sans text-neutral-800">mega</span>
+          </div>
+          <WalletConnect />
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="flex-1 flex items-center justify-center">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 w-full">
+          <div className="flex flex-col items-center justify-center gap-6 sm:gap-7">
+            {/* Floating stage */}
+            <div className="relative w-full max-w-[560px] aspect-[4/5] group">
+              {/* Grass left (1) */}
+              <img
+                src="/images/grass-left.png"
+                alt="Floating grass tuft"
+                width={140}
+                height={110}
+                className={cn(
+                  "pointer-events-none select-none",
+                  "absolute -left-10 sm:-left-16 bottom-8 sm:bottom-16",
+                  "drop-shadow-xl",
+                )}
+                style={{
+                  animation: "drift 7.5s ease-in-out infinite",
+                }}
+              />
+              {/* Grass right (top) */}
+              <img
+                src="/images/grass-right-a.png"
+                alt="Floating grass tuft"
+                width={100}
+                height={80}
+                className={cn(
+                  "pointer-events-none select-none",
+                  "absolute -right-6 sm:-right-10 top-6 sm:top-8",
+                  "drop-shadow-xl",
+                )}
+                style={{
+                  animation: "drift 6.2s ease-in-out infinite",
+                }}
+              />
+              {/* Grass right (bottom, larger) */}
+              <img
+                src="/images/grass-right-b.png"
+                alt="Floating grass tuft"
+                width={170}
+                height={130}
+                className={cn(
+                  "pointer-events-none select-none",
+                  "absolute -right-12 sm:-right-20 bottom-2 sm:bottom-6",
+                  "drop-shadow-xl",
+                )}
+                style={{
+                  animation: "drift 8.1s ease-in-out infinite",
+                }}
+              />
+
+              {/* Main character image with subtle hover/floating */}
+              <div className={cn("relative h-full w-full flex items-center justify-center z-[2]")}>
+                <img
+                  src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/clash-of-clans-clash-royale-supercell-image-barbarian-png-favpng-We71d0KgTTJ1jPA89W7LbDEmL.jpg-KlBKYTPBX2vWy6ORzLGMOz5U0pJwsV.jpeg"
+                  alt="Barbarian warrior character"
+                  className={cn(
+                    "h-auto w-[88%] sm:w-[82%] md:w-[78%]",
+                    "transition-transform duration-500 ease-out",
+                    "drop-shadow-[0_18px_22px_rgba(0,0,0,0.25)]",
+                    "group-hover:-translate-y-1",
+                    "select-none",
+                  )}
+                  style={{
+                    animation: "floatSlow 6s ease-in-out infinite",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Enter App button - brought higher and modern pill style with white glow */}
+            <Link href="/app" className="-mt-2 sm:-mt-3 relative">
+              <Button
+                size="lg"
+                className={cn(
+                  "px-8 py-5 text-base font-medium rounded-full",
+                  "bg-neutral-900 text-white",
+                  "shadow-[0_0_24px_rgba(255,255,255,0.55)]",
+                  "hover:shadow-[0_0_40px_rgba(255,255,255,0.85)]",
+                  "transition-shadow",
+                  "border border-white/10",
+                )}
+              >
+                Enter App
+              </Button>
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 -z-10 rounded-full"
+                style={{
+                  boxShadow: "0 0 70px 22px rgba(255,255,255,0.35)",
+                  filter: "blur(12px)",
+                }}
+              />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Simple global keyframes */}
+      <style jsx global>{`
+        @keyframes floatSlow {
+          0% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-6px);
+          }
+          100% {
+            transform: translateY(0px);
+          }
+        }
+        @keyframes drift {
+          0% {
+            transform: translate(0px, 0px) rotate(0deg);
+          }
+          50% {
+            transform: translate(6px, -6px) rotate(1.2deg);
+          }
+          100% {
+            transform: translate(0px, 0px) rotate(0deg);
+          }
+        }
+      `}</style>
+    </main>
+  )
+}
