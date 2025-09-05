@@ -120,6 +120,77 @@ export default function MarketplacePage() {
   const [typeCategories, setTypeCategories] = useState<Record<string, string>>({})
   const [selectedCategory, setSelectedCategory] = useState<'troop' | 'building' | 'utility' | null>(null)
 
+  // Inventory cache helpers
+  const inventoryCacheKey = React.useMemo(() => (publicKey ? `inventory:${publicKey.toBase58()}` : null), [publicKey?.toBase58()])
+  const loadInventoryFromCache = React.useCallback(() => {
+    try {
+      if (!inventoryCacheKey) return
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(inventoryCacheKey) : null
+      if (!raw) return
+      const arr = JSON.parse(raw) as { mint: string; metadata?: any; name?: string; image?: string; collectionName?: string }[]
+      const items = arr.map(it => ({
+        mint: new PublicKey(it.mint),
+        metadata: it.metadata,
+        name: it.name,
+        image: it.image,
+        collectionName: it.collectionName,
+      }))
+      setMyMints(items)
+    } catch {}
+  }, [inventoryCacheKey])
+  const saveInventoryToCache = React.useCallback((items: { mint: PublicKey; metadata?: any; name?: string; image?: string; collectionName?: string }[]) => {
+    try {
+      if (!inventoryCacheKey) return
+      const serializable = items.map(it => ({
+        mint: it.mint.toBase58(),
+        metadata: it.metadata,
+        name: it.name,
+        image: it.image,
+        collectionName: it.collectionName,
+      }))
+      if (typeof window !== 'undefined') window.localStorage.setItem(inventoryCacheKey, JSON.stringify(serializable))
+    } catch {}
+  }, [inventoryCacheKey])
+
+  // On wallet connect, load cached inventory immediately, then refresh in background
+  useEffect(() => {
+    loadInventoryFromCache()
+    if (publicKey) {
+      // background refresh
+      fetchMyNfts()
+    }
+  }, [publicKey, loadInventoryFromCache])
+
+  // Utility: parse on-chain + off-chain data for a single mint and push to state/cache
+  const addMintToInventory = React.useCallback(async (mint: PublicKey) => {
+    try {
+      const [metadataPDA] = getMetadataPDA(mint)
+      const metadataAccount = await connection.getAccountInfo(metadataPDA)
+      if (!metadataAccount) return
+      const d = metadataAccount.data
+      let off = 1; off += 32; off += 32
+      const nameLen = d.readUInt32LE(off); off += 4
+      const name = d.slice(off, off + nameLen).toString('utf8').replace(/\0+$/, ''); off += nameLen
+      const symbolLen = d.readUInt32LE(off); off += 4
+      off += symbolLen
+      const uriLen = d.readUInt32LE(off); off += 4
+      const uri = d.slice(off, off + uriLen).toString('utf8'); off += uriLen
+      off += 2 // seller fee
+      const hasCreators = d.readUInt8(off); off += 1
+      if (hasCreators === 1) { const creatorsLen = d.readUInt32LE(off); off += 4; off += creatorsLen * (32 + 1 + 1) }
+      off += 1; off += 1
+      const hasEditionNonce = d.readUInt8(off); off += 1; if (hasEditionNonce === 1) off += 1
+      const hasTokenStandard = d.readUInt8(off); off += 1; if (hasTokenStandard === 1) off += 1
+      let collectionName: string | undefined
+      const hasCollectionOpt = d.readUInt8(off); off += 1
+      if (hasCollectionOpt === 1) { off += 1; const collectionMintBuf = d.slice(off, off + 32); off += 32; const collectionMint = new PublicKey(collectionMintBuf); const match = collections.find(c => c.mint.equals(collectionMint)); collectionName = match?.name }
+      let metadataJson: any = null
+      try { const res = await fetch(uri); if (res.ok) metadataJson = await res.json() } catch {}
+      const newItem = { mint, metadata: metadataJson, name, image: metadataJson?.image || '/placeholder.svg', collectionName }
+      setMyMints(prev => { const updated = [newItem, ...prev.filter(x => !x.mint.equals(mint))]; saveInventoryToCache(updated); return updated })
+    } catch {}
+  }, [collections, saveInventoryToCache])
+
   useEffect(() => {
     if (connected && publicKey) {
       fetchMarketplace()
@@ -513,8 +584,11 @@ export default function MarketplacePage() {
                 if (res.ok) {
                   metadataJson = await res.json()
                 }
-              } catch {}
+              } catch (e) {
+                console.warn('Failed to fetch metadata JSON:', e)
+              }
               
+              // Only add NFTs that belong to our collections
               if (belongsToOurCollection) {
                 nfts.push({ 
                   mint, 
@@ -523,9 +597,16 @@ export default function MarketplacePage() {
                   image: metadataJson?.image || '/placeholder.svg',
                   collectionName: matchedCollectionName,
                 })
-                console.log('✅ Found NFT from our collection:', { mint: mint.toString(), name })
+                console.log('✅ Found NFT from our collection:', {
+                  mint: mint.toString(),
+                  name: name,
+                  collection: matchedCollectionName
+                })
               } else {
-                console.log('❌ NFT not from our collection:', { mint: mint.toString(), name })
+                console.log('❌ NFT not from our collection:', {
+                  mint: mint.toString(),
+                  name: name
+                })
               }
             } else {
               // No metadata found
@@ -537,6 +618,7 @@ export default function MarketplacePage() {
       }
       
       setMyMints(nfts)
+      saveInventoryToCache(nfts)
     } catch (e) {
       console.error(e)
     }
@@ -830,6 +912,8 @@ export default function MarketplacePage() {
       setSelectedCollection(null)
       
       await fetchCollections()
+      // Add newly minted NFT to cache/inventory
+      await addMintToInventory(nftMintKeypair.publicKey)
     } catch (error) {
       console.error('Error minting NFT:', error)
       setError('Failed to mint NFT: ' + (error as Error).message)
@@ -842,7 +926,7 @@ export default function MarketplacePage() {
 
   return (
     <div className="min-h-[100dvh] bg-white text-neutral-800">
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full">
         <div className="border-b border-black px-4 h-16 flex items-center justify-between">
           <h1 className="lowercase text-lg">nft marketplace</h1>
           {/* wallet button removed from marketplace header as requested */}
@@ -957,59 +1041,72 @@ export default function MarketplacePage() {
             {/* Marketplace (single collection types) */}
             {activeTab==='marketplace' && (
               <div>
-                <div className="border-y border-black px-4 py-3 flex items-center justify-between bg-white">
-                  <div className="lowercase text-sm flex items-center gap-4">
-                    <span>types</span>
-                    <div className="flex items-center gap-3 text-[12px]">
-                      <button onClick={()=>setSelectedCategory(null)} className={`underline-offset-4 ${selectedCategory===null?'underline':''}`}>all</button>
-                      <button onClick={()=>setSelectedCategory('troop')} className={`underline-offset-4 ${selectedCategory==='troop'?'underline':''}`}>troop</button>
-                      <button onClick={()=>setSelectedCategory('building')} className={`underline-offset-4 ${selectedCategory==='building'?'underline':''}`}>building</button>
-                      <button onClick={()=>setSelectedCategory('utility')} className={`underline-offset-4 ${selectedCategory==='utility'?'underline':''}`}>utility</button>
+                {/* Store-like bottom container with left sidebar (20%) and products (80%) */}
+                <div className="grid grid-cols-1 md:grid-cols-[20%_80%] divide-y md:divide-y-0 md:divide-x divide-black border-b border-black">
+                  {/* Sidebar filters */}
+                  <div className="p-6 border-r border-black">
+                    <div className="lowercase text-sm text-neutral-700 mb-3">filters</div>
+                    <div className="space-y-3">
+                      <div className="lowercase text-xs text-neutral-600">category</div>
+                      <div className="flex flex-col gap-2 text-sm lowercase">
+                        <label className="cursor-pointer">
+                          <input type="radio" name="cat" className="mr-2" checked={selectedCategory===null} onChange={()=>setSelectedCategory(null)} /> all
+                        </label>
+                        <label className="cursor-pointer">
+                          <input type="radio" name="cat" className="mr-2" checked={selectedCategory==='troop'} onChange={()=>setSelectedCategory('troop')} /> troop
+                        </label>
+                        <label className="cursor-pointer">
+                          <input type="radio" name="cat" className="mr-2" checked={selectedCategory==='building'} onChange={()=>setSelectedCategory('building')} /> building
+                        </label>
+                        <label className="cursor-pointer">
+                          <input type="radio" name="cat" className="mr-2" checked={selectedCategory==='utility'} onChange={()=>setSelectedCategory('utility')} /> utility
+                        </label>
+                      </div>
+                      <button onClick={fetchCollections} disabled={loading} className="text-xs underline disabled:opacity-50">refresh</button>
                     </div>
                   </div>
-                  <button onClick={fetchCollections} disabled={loading} className="text-sm underline disabled:opacity-50">refresh</button>
-                </div>
-                {(() => {
-                  const TARGET_COLLECTION_MINT = new PublicKey('2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r')
-                  const target = collections.find(c => c.mint.equals(TARGET_COLLECTION_MINT))
-                  if (!target) return <div className="p-6 text-sm text-neutral-600 lowercase">target collection not found</div>
-                  let types = itemTypesByCollection[collectionKey(target)] || []
-                  if (selectedCategory) {
-                    types = types.filter(t => (typeCategories[t.name]||'') === selectedCategory)
-                  }
-                  return (
-                    <div className="p-6 border-b border-black">
-                      {types.length === 0 ? (
-                        <div className="text-sm text-neutral-600 lowercase">no item types</div>
-                      ) : (
-                        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {types.map((it, i) => (
-                            <li key={i} className="group border border-black rounded-sm overflow-hidden bg-white relative">
-                              <div className="absolute inset-0 hidden group-hover:flex items-end justify-end p-2">
-                                <button onClick={() => { setSelectedCollection(target); setSelectedTypeName(it.name) }} className="text-[11px] bg-black text-white px-2 py-1 rounded-sm">mint</button>
-                              </div>
-                              <div className="block w-full text-left">
-                                <div className="aspect-square w-full bg-white flex items-center justify-center">
-                                  {typeImages[it.name] ? (
-                                    <img src={typeImages[it.name]} alt={it.name} className="h-full w-full object-contain p-3" />
-                                  ) : (
-                                    <div className="text-[11px] text-neutral-500">{it.name}</div>
-                                  )}
+                  {/* Items grid */}
+                  <div className="p-6">
+                  {(() => {
+                    const TARGET_COLLECTION_MINT = new PublicKey('2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r')
+                    const target = collections.find(c => c.mint.equals(TARGET_COLLECTION_MINT))
+                    if (!target) return <div className="text-sm text-neutral-600 lowercase">target collection not found</div>
+                    let types = itemTypesByCollection[collectionKey(target)] || []
+                    if (selectedCategory) {
+                      types = types.filter(t => (typeCategories[t.name]||'') === selectedCategory)
+                    }
+                    return (
+                      <div>
+                        {types.length === 0 ? (
+                          <div className="text-sm text-neutral-600 lowercase">no item types</div>
+                        ) : (
+                          <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {types.map((it, i) => (
+                              <li key={i} className="group border border-black rounded-sm overflow-hidden bg-white transition-all duration-300 ease-out hover:translate-x-2 hover:-translate-y-2 hover:shadow-[-8px_8px_25px_rgba(0,0,0,0.15)] relative">
+                                <div className="absolute inset-0 hidden group-hover:flex items-end justify-end p-2">
+                                  <button onClick={() => { setSelectedCollection(target); setSelectedTypeName(it.name) }} className="text-[11px] bg-black text-white px-2 py-1 rounded-sm">mint</button>
                                 </div>
-                                <div className="px-3 py-2 border-t border-black">
-                                  <div className="text-[12px] lowercase text-neutral-700 flex items-center justify-between">
-                                    <span>{it.name}</span>
-                                    <span>{(it.price / LAMPORTS_PER_SOL).toFixed(3)} sol</span>
+                                <div className="block w-full text-left">
+                                  <div className="aspect-square w-full bg-white flex items-center justify-center">
+                                   {typeImages[it.name] ? (
+                                     <img src={typeImages[it.name]} alt={it.name} className="h-full w-full object-contain p-3 transition-shadow duration-300 ease-out group-hover:shadow-[0_0_36px_rgba(255,255,255,0.65),0_0_60px_rgba(255,235,0,0.35)]" />
+                                   ) : (
+                                     <div className="text-[11px] text-neutral-500">{it.name}</div>
+                                   )}
+                                  </div>
+                                  <div className="px-3 py-2 border-t border-black">
+                                    <div className="text-[12px] lowercase text-neutral-700">{it.name}</div>
                                   </div>
                                 </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )
-                })()}
+                               </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )
+                  })()}
+                  </div>
+                </div>
               </div>
             )}
  
@@ -1046,84 +1143,47 @@ export default function MarketplacePage() {
  
             {/* My NFTs Tab */}
             {activeTab==='inventory' && (
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-semibold">Inventory</h2>
-                  <button onClick={fetchMyNfts} disabled={loading} className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white font-bold py-1 px-3 rounded text-sm">Refresh</button>
-                </div>
-                {myMints.length===0 ? (
-                  <p className="text-gray-300">No NFTs found in this wallet.</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {myMints.filter(n=>{
-                      // keep only target collection NFTs by stored collectionName equals target collection name (set during parsing)
-                      const TARGET_COLLECTION_MINT = '2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r'
-                      return n.collectionName && collections.find(c=>c.mint.toBase58()===TARGET_COLLECTION_MINT && c.name===n.collectionName)
-                    }).map((nft, i)=>(
-                      <div key={i} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                        <a href={`/app/marketplace/nft/${nft.mint.toBase58()}`} className="block group">
-                          {nft.image && nft.image !== '/placeholder.svg' ? (
-                            <div className="mb-3">
-                              <img 
-                                src={nft.image} 
-                                alt={nft.name || 'NFT'} 
-                                className="w-full h-32 object-cover rounded group-hover:opacity-90 transition"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = '/placeholder.svg'
-                                }}
-                              />
-                            </div>
-                          ) : (
-                            <div className="mb-3 h-32 bg-gray-700 rounded flex items-center justify-center">
-                              <span className="text-gray-400 text-sm">No Image</span>
-                            </div>
-                          )}
-                          
-                          <div className="space-y-2">
-                            <div>
-                              <div className="text-sm font-semibold text-white">
-                                {nft.name || 'Unknown NFT'}
-                              </div>
-                              {nft.metadata?.description && (
-                                <div className="text-xs text-gray-300 mt-1 line-clamp-2">
-                                  {nft.metadata.description}
-                                </div>
-                              )}
-                              <div className="text-xs text-blue-300 mt-1">
-                                Collection: {nft.collectionName || 'Unknown'}
-                              </div>
-                            </div>
-                            
-                            <div className="text-xs text-gray-400">
-                              <div className="font-mono break-all">{nft.mint.toBase58().slice(0, 8)}...</div>
-                            </div>
-                            
-                            <div className="flex gap-2">
-                              <a 
-                                href={`https://solscan.io/token/${nft.mint.toBase58()}?cluster=devnet`} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                className="text-indigo-300 hover:underline text-xs"
-                              >
-                                View on Solscan
-                              </a>
-                              {nft.metadata?.external_url && (
-                                <a 
-                                  href={nft.metadata.external_url} 
-                                  target="_blank" 
-                                  rel="noreferrer" 
-                                  className="text-green-300 hover:underline text-xs"
-                                >
-                                  External Link
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        </a>
-                      </div>
-                    ))}
+              <div className="grid grid-cols-1 md:grid-cols-[20%_80%] divide-y md:divide-y-0 md:divide-x divide-black border-b border-black">
+                {/* Sidebar */}
+                <div className="p-6 border-r border-black">
+                  <div className="lowercase text-sm text-neutral-700 mb-3">inventory</div>
+                  <div className="space-y-3">
+                    <div className="lowercase text-xs text-neutral-600">collection</div>
+                    <div className="text-[12px] lowercase text-neutral-800">target only</div>
+                    <button onClick={fetchMyNfts} disabled={loading} className="text-xs underline disabled:opacity-50">refresh</button>
                   </div>
-                )}
+                </div>
+                {/* Items grid */}
+                <div className="p-6">
+                  {myMints.filter(n=>{
+                    const TARGET_COLLECTION_MINT = '2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r'
+                    return n.collectionName && collections.find(c=>c.mint.toBase58()===TARGET_COLLECTION_MINT && c.name===n.collectionName)
+                  }).length === 0 ? (
+                    <div className="text-sm text-neutral-600 lowercase">no items</div>
+                  ) : (
+                    <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {myMints.filter(n=>{
+                        const TARGET_COLLECTION_MINT = '2xXLJU6hbKwTjvqkDsfv8rwFqSB7hRSqzyAvXDmgJi1r'
+                        return n.collectionName && collections.find(c=>c.mint.toBase58()===TARGET_COLLECTION_MINT && c.name===n.collectionName)
+                      }).map((nft, i)=>(
+                        <li key={i} className="group border border-black rounded-sm overflow-hidden bg-white transition-all duration-300 ease-out hover:translate-x-2 hover:-translate-y-2 hover:shadow-[-8px_8px_25px_rgba(0,0,0,0.15)]">
+                          <a href={`/app/marketplace/nft/${nft.mint.toBase58()}`} className="block">
+                            <div className="aspect-square w-full bg-white flex items-center justify-center">
+                              {nft.image && nft.image !== '/placeholder.svg' ? (
+                                <img src={nft.image} alt={nft.name || 'NFT'} className="h-full w-full object-contain p-3 transition-shadow duration-300 ease-out group-hover:shadow-[0_0_36px_rgba(255,255,255,0.65),0_0_60px_rgba(255,235,0,0.35)]" onError={(e)=>{(e.target as HTMLImageElement).src='/placeholder.svg'}} />
+                              ) : (
+                                <div className="text-[11px] text-neutral-500">{nft.name || 'nft'}</div>
+                              )}
+                            </div>
+                            <div className="px-3 py-2 border-t border-black">
+                              <div className="text-[12px] lowercase text-neutral-700">{nft.name || 'unknown nft'}</div>
+                            </div>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
  
