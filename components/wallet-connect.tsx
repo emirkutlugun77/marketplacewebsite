@@ -75,6 +75,17 @@ function WalletConnectInner() {
     }
   }, [wallet])
 
+  // Register user on backend when wallet connects
+  React.useEffect(() => {
+    const address = publicKey?.toString()
+    if (!connected || !address) return
+    fetch('http://localhost:3001/users/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ publicKey: address }),
+    }).catch(() => {})
+  }, [connected, publicKey])
+
   if (connecting) {
     return (
       <Button

@@ -4,23 +4,38 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
+import { AnchorProvider,  Idl, Program } from '@coral-xyz/anchor'
+// @ts-ignore - local IDL json
+import idl from '@/app/lib/idl/nft_marketplace.json'
 import { 
   PublicKey, 
   Transaction, 
   SystemProgram, 
   LAMPORTS_PER_SOL,
-  Keypair,
-  SYSVAR_RENT_PUBKEY
 } from '@solana/web3.js'
-import {
-  getAssociatedTokenAddress,
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-} from '@solana/spl-token'
-import { cn } from "@/lib/utils"
+
+
 
 // Program constants
 const PROGRAM_ID = new PublicKey("8KzE3LCicxv13iJx2v2V4VQQNWt4QHuvfuH8jxYnkGQ1")
+
+const getProgram = (
+  connection: any,
+  walletCtx: { publicKey: PublicKey | null; signTransaction?: any; signAllTransactions?: any },
+) => {
+  const wallet = {
+    publicKey: walletCtx.publicKey,
+    signTransaction: walletCtx.signTransaction,
+    signAllTransactions: walletCtx.signAllTransactions || (async (txs: any[]) => {
+      if (!walletCtx.signTransaction) throw new Error('signTransaction is not available')
+      const signed: any[] = []
+      for (const tx of txs) signed.push(await walletCtx.signTransaction(tx))
+      return signed
+    }),
+  } as any
+  const provider = new AnchorProvider(connection, wallet, { commitment: 'confirmed' })
+  return new Program(idl as Idl, PROGRAM_ID, provider)
+}
 
 interface PresaleConfig {
   presaleMint: PublicKey
@@ -40,6 +55,9 @@ interface MarketplaceData {
 interface DonationConfig {
   admin: PublicKey
   totalCollected: number
+  targetLamports: number
+  startTs: number
+  endTs: number
   isActive: boolean
   bump: number
 }
@@ -52,14 +70,13 @@ interface Donor {
 }
 
 export default function PresalePage() {
-  const { publicKey, connected, signTransaction } = useWallet()
+  const { publicKey, connected, signTransaction, signAllTransactions } = useWallet()
   const { connection } = useConnection()
   
   // State management
   const [loading, setLoading] = React.useState(false)
   const [status, setStatus] = React.useState('')
-  const [currentStep, setCurrentStep] = React.useState(1) // 1: Mint NFT, 2: Donate
-  const [hasAccessNFT, setHasAccessNFT] = React.useState<boolean | null>(null)
+  const [currentStep, setCurrentStep] = React.useState(2)
   const [presaleConfig, setPresaleConfig] = React.useState<PresaleConfig | null>(null)
   const [marketplace, setMarketplace] = React.useState<MarketplaceData | null>(null)
   const [donationConfig, setDonationConfig] = React.useState<DonationConfig | null>(null)
@@ -78,103 +95,42 @@ export default function PresalePage() {
     return PublicKey.findProgramAddressSync([Buffer.from("marketplace")], PROGRAM_ID)[0]
   }
 
-  const getPresaleConfigPDA = () => {
-    return PublicKey.findProgramAddressSync([Buffer.from("presale_config")], PROGRAM_ID)[0]
+  const getPresalePDA = () => {
+    return PublicKey.findProgramAddressSync([Buffer.from("presale")], PROGRAM_ID)[0]
   }
 
-  const getDonationConfigPDA = () => {
-    return PublicKey.findProgramAddressSync([Buffer.from("donation_config")], PROGRAM_ID)[0]
+  const getContributionPDA = (presale: PublicKey, contributor: PublicKey) => {
+    return PublicKey.findProgramAddressSync([Buffer.from("contrib"), presale.toBuffer(), contributor.toBuffer()], PROGRAM_ID)[0]
   }
+
+  // Backward compatibility helpers
+  const getDonationConfigPDA = () => getPresalePDA()
 
   // Fetch donor list from transaction history
   const fetchDonors = async () => {
-    if (!connection || !donationConfig) return
-    
+    if (!connection) return
     try {
       setLoadingDonors(true)
-      console.log('Fetching donation transactions...')
-      
-      const donationConfigPDA = getDonationConfigPDA()
-      
-      // Get all signatures for the donation config account
-      const signatures = await connection.getSignaturesForAddress(
-        donationConfigPDA,
-        { limit: 100 } // Get last 100 transactions
-      )
-      
-      console.log('Found signatures:', signatures.length)
-      
-      const donorList: Donor[] = []
-      
-      for (const sigInfo of signatures) {
-        try {
-          // Get transaction details
-          const tx = await connection.getTransaction(sigInfo.signature, {
-            maxSupportedTransactionVersion: 0
-          })
-          
-          if (!tx || !tx.meta || tx.meta.err) continue
-          
-          // Check if this is a donation transaction
-          const message = tx.transaction.message
-          const accountKeys = message.getAccountKeys()
-          
-          // Look for our program in the instructions
-          const programInstructions = message.compiledInstructions.filter(
-            instruction => accountKeys.get(instruction.programIdIndex)?.equals(PROGRAM_ID)
-          )
-          
-          if (programInstructions.length === 0) continue
-          
-          // Check instruction data for donate discriminator
-          for (const instruction of programInstructions) {
-            const data = Buffer.from(instruction.data)
-            const discriminator = data.slice(0, 8)
-            const donateDiscriminator = Buffer.from([121, 186, 218, 211, 73, 70, 196, 180])
-            
-            if (discriminator.equals(donateDiscriminator)) {
-              // This is a donation transaction
-              const amount = data.readBigUInt64LE(8) // Amount starts at byte 8
-              
-              // Find the donor (signer) address
-              const signerIndex = instruction.accountKeyIndexes.find((accountIndex: number) => {
-                return message.isAccountSigner(accountIndex)
-              })
-              
-              if (signerIndex !== undefined) {
-                const donorAddress = accountKeys.get(signerIndex)
-                
-                if (donorAddress) {
-                  donorList.push({
-                    address: donorAddress.toString(),
-                    amount: Number(amount),
-                    timestamp: (tx.blockTime || 0) * 1000,
-                    txSignature: sigInfo.signature
-                  })
-                  
-                  console.log('Found donation:', {
-                    donor: donorAddress.toString().slice(0, 8) + '...',
-                    amount: Number(amount) / LAMPORTS_PER_SOL,
-                    signature: sigInfo.signature.slice(0, 8) + '...'
-                  })
-                }
-              }
-            }
-          }
-        } catch (txError) {
-          console.warn('Error processing transaction:', sigInfo.signature, txError)
-        }
+      const presalePDA = getPresalePDA()
+      const accounts = await connection.getProgramAccounts(PROGRAM_ID)
+      const disc = Buffer.from([81, 178, 219, 211, 44, 158, 224, 47]) // PresaleContribution discriminator
+      const list: Donor[] = []
+      for (const acc of accounts) {
+        const data = acc.account.data
+        if (data.length < 8 + 32 + 32 + 8) continue
+        if (!data.subarray(0, 8).equals(disc)) continue
+        const presaleKey = new PublicKey(data.subarray(8, 40))
+        if (!presaleKey.equals(presalePDA)) continue
+        const contributor = new PublicKey(data.subarray(40, 72))
+        const amount = Number(data.readBigUInt64LE(72))
+        list.push({ address: contributor.toString(), amount, timestamp: Date.now(), txSignature: '' })
       }
-      
-      // Sort by timestamp (newest first)
-      donorList.sort((a, b) => b.timestamp - a.timestamp)
-      
-      console.log('Total donors found:', donorList.length)
-      setDonors(donorList)
-      
+      // Sort by amount desc
+      list.sort((a, b) => b.amount - a.amount)
+      setDonors(list)
     } catch (error) {
-      console.error('Error fetching donors:', error)
-      setStatus('Error fetching donor list')
+      console.error('Error fetching contributors:', error)
+      setDonors([])
     } finally {
       setLoadingDonors(false)
     }
@@ -205,43 +161,29 @@ export default function PresalePage() {
     }
   }
 
-  // Fetch donation configuration
+  // Fetch donation configuration (read Presale account without Anchor)
   const fetchDonationConfig = async () => {
     if (!connection) return
-    
     try {
-      const donationConfigPDA = getDonationConfigPDA()
-      console.log('Fetching donation config:', donationConfigPDA.toString())
-      
-      const account = await connection.getAccountInfo(donationConfigPDA)
-      
-      if (account) {
-        console.log('Donation config found, data length:', account.data.length)
-        
-        const data = account.data
-        const admin = new PublicKey(data.slice(8, 40))
-        const totalCollected = data.readBigUInt64LE(40)
-        const isActive = data[48] === 1
-        const bump = data[49]
-        
-        console.log('Donation config:', {
-          admin: admin.toString(),
-          totalCollected: Number(totalCollected),
-          isActive,
-          bump
-        })
-        
-        setDonationConfig({
-          admin,
-          totalCollected: Number(totalCollected),
-          isActive,
-          bump
-        })
-        
-      } else {
-        console.log('Donation config not found')
+      const presalePDA = getPresalePDA()
+      const account = await connection.getAccountInfo(presalePDA)
+      if (!account) {
         setDonationConfig(null)
+        return
       }
+      const data = account.data
+      if (!data || data.length < 8 + 32 + 8 + 8 + 8 + 8 + 1 + 1) {
+        setDonationConfig(null)
+        return
+      }
+      const admin = new PublicKey(data.subarray(8, 40))
+      const startTs = Number(data.readBigInt64LE(40))
+      const endTs = Number(data.readBigInt64LE(48))
+      const totalCollected = Number(data.readBigUInt64LE(56))
+      const targetLamports = Number(data.readBigUInt64LE(64))
+      const isActive = data[72] === 1
+      const bump = data[73]
+      setDonationConfig({ admin, totalCollected, targetLamports, startTs, endTs, isActive, bump })
     } catch (error) {
       console.error('Error fetching donation config:', error)
       setDonationConfig(null)
@@ -257,173 +199,43 @@ export default function PresalePage() {
 
     try {
       setLoading(true)
-      setStatus('Initializing donation system...')
+      setStatus('Initializing presale...')
 
-      const marketplacePDA = getMarketplacePDA()
-      const donationConfigPDA = getDonationConfigPDA()
-
-      const initDonationInstruction = {
+      const presalePDA = getPresalePDA()
+      const initDisc = Buffer.from([9, 174, 12, 126, 150, 119, 68, 100])
+      const ix = {
         programId: PROGRAM_ID,
         keys: [
-          { pubkey: marketplacePDA, isSigner: false, isWritable: false },
-          { pubkey: donationConfigPDA, isSigner: false, isWritable: true },
+          { pubkey: presalePDA, isSigner: false, isWritable: true },
           { pubkey: publicKey, isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        data: Buffer.from([126, 69, 140, 217, 145, 65, 209, 132]), // initialize_donation discriminator from IDL
-      }
+        data: initDisc,
+      } as any
 
-      const transaction = new Transaction().add(initDonationInstruction)
+      const tx = new Transaction().add(ix)
       const { blockhash } = await connection.getLatestBlockhash()
-      transaction.recentBlockhash = blockhash
-      transaction.feePayer = publicKey
-
-      const signedTx = await signTransaction(transaction)
-      const signature = await connection.sendRawTransaction(signedTx.serialize())
-      
-      await connection.confirmTransaction(signature, 'confirmed')
-      
-      console.log('Donation system initialized!')
-      setStatus('Donation system initialized successfully!')
+      tx.recentBlockhash = blockhash
+      tx.feePayer = publicKey
+      const signed = await signTransaction(tx)
+      const sig = await connection.sendRawTransaction(signed.serialize())
+      await connection.confirmTransaction(sig, 'confirmed')
+      setStatus('Presale initialized successfully!')
       
       fetchDonationConfig()
       
     } catch (error: any) {
-      console.error('Error initializing donation:', error)
+      console.error('Error initializing presale:', error)
       setStatus(`Error: ${error.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Fetch presale configuration
-  const fetchPresaleConfig = async () => {
-    try {
-      const presaleConfigPDA = getPresaleConfigPDA()
-      console.log('Fetching presale config:', presaleConfigPDA.toString())
-      
-      const account = await connection.getAccountInfo(presaleConfigPDA)
-      
-      if (account) {
-        console.log('Presale config found, data length:', account.data.length)
-        
-        const data = account.data
-        const presaleMint = new PublicKey(data.slice(8, 40))
-        const price = data.readBigUInt64LE(40)
-        const isActive = data[48] === 1
-        const totalMinted = data.readBigUInt64LE(49)
-        const maxSupply = data.readBigUInt64LE(57)
-        const bump = data[65]
-        
-        setPresaleConfig({
-          presaleMint,
-          price: Number(price),
-          isActive,
-          totalMinted: Number(totalMinted),
-          maxSupply: Number(maxSupply),
-          bump
-        })
-        
-      } else {
-        console.log('Presale config not found')
-        setPresaleConfig(null)
-      }
-    } catch (error) {
-      console.error('Error fetching presale config:', error)
-      setPresaleConfig(null)
-    }
-  }
 
-  // Check for access NFT
+  // Access check disabled: presale is open to all
   const checkAccessNFT = async () => {
-    if (!publicKey || !connection) return
-    
-    try {
-      setHasAccessNFT(null)
-      console.log('Checking for Access Pass...')
-      
-      // Check localStorage first for quick access
-      const savedAccessNFTs = JSON.parse(localStorage.getItem('presaleNFTs') || '[]')
-      const hasStoredAccess = savedAccessNFTs.some((nft: any) => 
-        nft.owner === publicKey.toString() && nft.name === "mini&mega Access Pass"
-      )
-      
-      if (hasStoredAccess) {
-        setHasAccessNFT(true)
-        setCurrentStep(2) // Move to donation step
-        return
-      }
-
-      // Check on-chain token accounts
-      const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
-        programId: TOKEN_PROGRAM_ID,
-      })
-
-      let foundAccessNFT = false
-
-      for (const tokenAccount of tokenAccounts.value) {
-        try {
-          const accountData = await connection.getParsedAccountInfo(tokenAccount.pubkey)
-          const parsedData = accountData.value?.data as any
-          
-          if (parsedData?.parsed?.info?.tokenAmount?.decimals === 0 && 
-              parsedData?.parsed?.info?.tokenAmount?.uiAmount > 0) {
-            
-            const mintAddress = parsedData.parsed.info.mint
-            console.log('Found NFT with mint:', mintAddress)
-            
-            try {
-              const metadataPDA = await PublicKey.findProgramAddress(
-                [
-                  Buffer.from('metadata'),
-                  new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s').toBuffer(),
-                  new PublicKey(mintAddress).toBuffer(),
-                ],
-                new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s')
-              )
-
-              const metadataAccount = await connection.getAccountInfo(metadataPDA[0])
-              if (metadataAccount) {
-                const data = metadataAccount.data.toString()
-                if (data.includes('mini&mega Access Pass') || data.includes('GFAP')) {
-                  console.log('Access NFT found!')
-                  
-                  // Save to localStorage
-                  const nftData = {
-                    mint: mintAddress,
-                    owner: publicKey.toString(),
-                    name: "mini&mega Access Pass",
-                    symbol: "GFAP"
-                  }
-                  
-                  const existingNFTs = JSON.parse(localStorage.getItem('presaleNFTs') || '[]')
-                  const nftExists = existingNFTs.some((nft: any) => nft.mint === mintAddress)
-                  
-                  if (!nftExists) {
-                    existingNFTs.push(nftData)
-                    localStorage.setItem('presaleNFTs', JSON.stringify(existingNFTs))
-                  }
-                  
-                  foundAccessNFT = true
-                  setCurrentStep(2) // Move to donation step
-                  break
-                }
-              }
-            } catch (error) {
-              console.log('Error checking metadata for mint:', mintAddress)
-            }
-          }
-        } catch (accountError) {
-          console.error('Error parsing token account:', accountError)
-        }
-      }
-      
-      setHasAccessNFT(foundAccessNFT)
-      
-    } catch (error) {
-      console.error('Error checking access NFT:', error)
-      setHasAccessNFT(false)
-    }
+    setCurrentStep(2)
   }
 
   // Check donation status
@@ -436,93 +248,16 @@ export default function PresalePage() {
     setHasDonated(hasDonatedBefore)
   }
 
-  // Mint presale NFT
+  // Access pass minting is not part of the current on-chain program.
+  // Proceed directly to the donation step without sending a program instruction.
   const mintPresaleNFT = async () => {
-    if (!publicKey || !signTransaction || !presaleConfig) {
-      setStatus('Please connect your wallet and wait for presale to load')
+    if (!publicKey) {
+      setStatus('Please connect your wallet')
       return
     }
-
-    try {
-      setLoading(true)
-      setStatus('Minting Access Pass...')
-
-      const marketplacePDA = getMarketplacePDA()
-      const presaleConfigPDA = getPresaleConfigPDA()
-      const nftMint = Keypair.generate()
-      
-      const buyerTokenAccount = await getAssociatedTokenAddress(
-        nftMint.publicKey,
-        publicKey
-      )
-
-      const metadataPDA = await PublicKey.findProgramAddress(
-        [
-          Buffer.from('metadata'),
-          new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s').toBuffer(),
-          nftMint.publicKey.toBuffer(),
-        ],
-        new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s')
-      )
-
-      const mintPresaleInstruction = {
-        programId: PROGRAM_ID,
-        keys: [
-          { pubkey: marketplacePDA, isSigner: false, isWritable: false },
-          { pubkey: presaleConfigPDA, isSigner: false, isWritable: true },
-          { pubkey: marketplace?.admin || publicKey, isSigner: false, isWritable: true },
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: nftMint.publicKey, isSigner: true, isWritable: true },
-          { pubkey: buyerTokenAccount, isSigner: false, isWritable: true },
-          { pubkey: metadataPDA[0], isSigner: false, isWritable: true },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s'), isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-        ],
-        data: Buffer.from([201, 197, 156, 166, 208, 236, 41, 144]), // mint_presale_nft discriminator
-      }
-
-      const transaction = new Transaction().add(mintPresaleInstruction)
-      const { blockhash } = await connection.getLatestBlockhash()
-      transaction.recentBlockhash = blockhash
-      transaction.feePayer = publicKey
-
-      transaction.partialSign(nftMint)
-      const signedTx = await signTransaction(transaction)
-      
-      const signature = await connection.sendRawTransaction(signedTx.serialize())
-      await connection.confirmTransaction(signature, 'confirmed')
-      
-      console.log('Access Pass minted successfully!')
-      setStatus('Access Pass minted! Moving to donation step...')
-      
-      // Save mint info to localStorage
-      const savedNFTs = JSON.parse(localStorage.getItem('presaleNFTs') || '[]')
-      savedNFTs.push({
-        name: 'mini&mega Access Pass',
-        symbol: 'GFAP',
-        mint: nftMint.publicKey.toString(),
-        owner: publicKey.toString(),
-        timestamp: Date.now()
-      })
-      localStorage.setItem('presaleNFTs', JSON.stringify(savedNFTs))
-      
-      setHasAccessNFT(true)
-      setCurrentStep(2)
-      
-      // Recheck config
-      setTimeout(() => {
-        fetchPresaleConfig()
-      }, 2000)
-      
-    } catch (error: any) {
-      console.error('Error minting presale NFT:', error)
-      setStatus(`Error: ${error.message}`)
-    } finally {
-      setLoading(false)
-    }
+    setHasAccessNFT(true)
+    setCurrentStep(2)
+    setStatus('Proceeding to presale contribution...')
   }
 
   // Make donation using contract
@@ -537,35 +272,29 @@ export default function PresalePage() {
       setStatus('Making donation...')
       
       const amount = Math.floor(donationAmount[0] * LAMPORTS_PER_SOL)
-      const donationConfigPDA = getDonationConfigPDA()
-      
-      // Encode donation amount as 8-byte little endian
-      const amountBuffer = Buffer.alloc(8)
-      amountBuffer.writeBigUInt64LE(BigInt(amount), 0)
-      
-      const donateInstruction = {
+      const presalePDA = getPresalePDA()
+      const contributionPDA = getContributionPDA(presalePDA, publicKey)
+      const contribDisc = Buffer.from([248, 72, 28, 96, 70, 166, 8, 117])
+      const amtBuf = Buffer.alloc(8)
+      amtBuf.writeBigUInt64LE(BigInt(amount), 0)
+      const ix = {
         programId: PROGRAM_ID,
         keys: [
-          { pubkey: donationConfigPDA, isSigner: false, isWritable: true },
-          { pubkey: donationConfig.admin, isSigner: false, isWritable: true },
+          { pubkey: presalePDA, isSigner: false, isWritable: true },
+          { pubkey: contributionPDA, isSigner: false, isWritable: true },
           { pubkey: publicKey, isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        data: Buffer.concat([
-          Buffer.from([121, 186, 218, 211, 73, 70, 196, 180]), // donate discriminator from IDL
-          amountBuffer
-        ]),
-      }
+        data: Buffer.concat([contribDisc, amtBuf]),
+      } as any
 
-      const transaction = new Transaction().add(donateInstruction)
+      const tx = new Transaction().add(ix)
       const { blockhash } = await connection.getLatestBlockhash()
-      transaction.recentBlockhash = blockhash
-      transaction.feePayer = publicKey
-
-      const signedTx = await signTransaction(transaction)
-      const signature = await connection.sendRawTransaction(signedTx.serialize())
-      
-      await connection.confirmTransaction(signature, 'confirmed')
+      tx.recentBlockhash = blockhash
+      tx.feePayer = publicKey
+      const signed = await signTransaction(tx)
+      const sig = await connection.sendRawTransaction(signed.serialize())
+      await connection.confirmTransaction(sig, 'confirmed')
       
       setStatus(`Donated ${donationAmount[0]} SOL successfully! You can now access the marketplace.`)
       
@@ -591,7 +320,6 @@ export default function PresalePage() {
   React.useEffect(() => {
     if (connected && publicKey) {
       fetchMarketplace()
-      fetchPresaleConfig()
       fetchDonationConfig()
       checkAccessNFT()
       checkDonationStatus()
@@ -654,8 +382,8 @@ export default function PresalePage() {
           <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold mb-1">Donor Management</h3>
-                <p className="text-neutral-600 text-sm">View all supporters who made donations</p>
+                <h3 className="text-lg font-semibold mb-1">Presale Contributors</h3>
+                <p className="text-neutral-600 text-sm">View all contributors and manage presale</p>
               </div>
               <Button
                 onClick={() => {
@@ -665,7 +393,39 @@ export default function PresalePage() {
                 disabled={loadingDonors}
                 className="bg-blue-600 text-white hover:bg-blue-700"
               >
-                {loadingDonors ? 'Loading...' : 'View Donors'}
+                {loadingDonors ? 'Loading...' : 'View Contributors'}
+              </Button>
+              <Button
+                onClick={async () => {
+                  try {
+                    setStatus('Withdrawing...')
+                    const presalePDA = getPresalePDA()
+                    const disc = Buffer.from([54, 154, 35, 93, 29, 58, 10, 208]) // end_presale
+                    const ix = {
+                      programId: PROGRAM_ID,
+                      keys: [
+                        { pubkey: presalePDA, isSigner: false, isWritable: true },
+                        { pubkey: publicKey!, isSigner: true, isWritable: true },
+                        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                      ],
+                      data: disc,
+                    } as any
+                    const tx = new Transaction().add(ix)
+                    const { blockhash } = await connection.getLatestBlockhash()
+                    tx.recentBlockhash = blockhash
+                    tx.feePayer = publicKey!
+                    const signed = await signTransaction!(tx)
+                    const sig = await connection.sendRawTransaction(signed.serialize())
+                    await connection.confirmTransaction(sig, 'confirmed')
+                    setStatus('Withdraw completed')
+                    fetchDonationConfig()
+                  } catch (e: any) {
+                    setStatus(`Withdraw failed: ${e.message}`)
+                  }
+                }}
+                className="bg-black text-white hover:bg-black/80 ml-2"
+              >
+                Withdraw to admin
               </Button>
             </div>
           </div>
@@ -677,7 +437,7 @@ export default function PresalePage() {
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
               <div className="p-6 border-b border-neutral-200">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold lowercase">donation supporters</h2>
+                  <h2 className="text-xl font-semibold lowercase">presale contributors</h2>
                   <button
                     onClick={() => setShowDonorModal(false)}
                     className="text-neutral-500 hover:text-neutral-700 text-2xl"
@@ -686,7 +446,7 @@ export default function PresalePage() {
                   </button>
                 </div>
                 <p className="text-neutral-600 text-sm mt-1">
-                  Total donors: {donors.length} • Total raised: {(donationConfig?.totalCollected || 0) / LAMPORTS_PER_SOL} SOL
+                  Total contributors: {donors.length} • Total raised: {(donationConfig?.totalCollected || 0) / LAMPORTS_PER_SOL} SOL
                 </p>
               </div>
               
@@ -699,7 +459,7 @@ export default function PresalePage() {
                 ) : donors.length === 0 ? (
                   <div className="p-12 text-center">
                     <div className="text-4xl mb-4">Empty</div>
-                    <p className="text-neutral-500">No donations found yet</p>
+                    <p className="text-neutral-500">No contributions found yet</p>
                   </div>
                 ) : (
                   <div className="p-6">
@@ -757,75 +517,12 @@ export default function PresalePage() {
           </div>
         )}
 
-        {/* Step 1: Mint Access Pass */}
-        {currentStep === 1 && (
-          <div className="p-6">
-            
-            
-            {hasAccessNFT === null && (
-              <div className="text-center py-12">
-                <div className="text-4xl mb-4">Checking</div>
-                <p className="text-neutral-500 lowercase">checking for existing access pass...</p>
-              </div>
-            )}
-
-            {hasAccessNFT === false && presaleConfig && (
-              <div className="max-w-md mx-auto">
-                <div className="text-center mb-6">
-                  <div style={{
-                    width: '200px',
-                    height: '200px',
-                    background: 'linear-gradient(45deg,rgba(255, 255, 255, 0.31),rgba(4, 15, 34, 0))',
-                    borderRadius: '15px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '4rem',
-                    margin: '0 auto 20px'
-                  }}>
-                    <img src="/stylized-town-hall-isometric.png" alt="" style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain'
-                    }} />
-                  </div>
-                  <h3 className="text-lg font-semibold lowercase mb-2">mini&mega access pass</h3>
-                  <p className="text-sm text-neutral-600">your key to exclusive features</p>
-                </div>
-
-                <div className="space-y-4 mb-6">
-                  <div className="flex justify-between">
-                    <span>price:</span>
-                    <span className="font-semibold">{(presaleConfig.price / LAMPORTS_PER_SOL).toFixed(3)} SOL</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>minted:</span>
-                    <span>{presaleConfig.totalMinted} / {presaleConfig.maxSupply}</span>
-                  </div>
-                 
-                </div>
-
-             
-
-                <Button
-                  onClick={mintPresaleNFT}
-                  disabled={loading || !presaleConfig.isActive || presaleConfig.totalMinted >= presaleConfig.maxSupply}
-                  className="w-full bg-black text-white hover:bg-black/90 py-3 lowercase"
-                >
-                  {loading ? 'minting...' : 
-                   !presaleConfig.isActive ? 'presale inactive' :
-                   presaleConfig.totalMinted >= presaleConfig.maxSupply ? 'sold out' :
-                   `mint access pass (${(presaleConfig.price / LAMPORTS_PER_SOL).toFixed(3)} sol)`}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Step 1 removed: no access pass gating */}
 
 
 
         {/* Step 2: Waiting for donation config */}
-        {currentStep === 2 && hasAccessNFT && !donationConfig && (
+        {currentStep === 2 && !donationConfig && (
           <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
             <div className="text-center py-12">
               <div className="text-4xl mb-4">Setup</div>
@@ -837,32 +534,43 @@ export default function PresalePage() {
       </div>
 
       {/* Step 2: Support Project - FULL WIDTH OUTSIDE CONTAINER */}
-      {currentStep === 2 && hasAccessNFT && donationConfig && (
+      {currentStep === 2 && donationConfig && (
         <div className="bg-transparent shadow-sm">
           <div className="px-4 sm:px-6 lg:px-8">
             <h2 className="text-xl font-semibold lowercase mb-6 text-center">join presale</h2>
           </div>
-          
-          {!hasDonated ? (
-            <>
-              {/* Real Donation Progress */}
-              <div className="px-4 sm:px-6 lg:px-8 text-center mb-8 w-full">
-                <div className="bg-neutral-50 rounded-lg p-4 mb-6 max-w-4xl mx-auto">
-                  <div className="flex justify-between text-sm text-neutral-600 mb-2">
-                    <span>{(donationConfig.totalCollected / LAMPORTS_PER_SOL).toFixed(1)} SOL raised</span>
-                    <span>∞ SOL goal</span>
-                  </div>
-                  <div className="w-full bg-neutral-200 rounded-full h-2 mb-2">
-                    <div 
-                      className="bg-black h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min((donationConfig.totalCollected / LAMPORTS_PER_SOL / 100) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <div className="text-center text-xs text-neutral-500">
-                    
-                  </div>
-                </div>
+          {/* Presale progress */}
+          <div className="px-4 sm:px-6 lg:px-8 text-center mb-8 w-full">
+            <div className="bg-neutral-50 rounded-lg p-4 mb-6 max-w-4xl mx-auto">
+              <div className="flex justify-between text-sm text-neutral-600 mb-2">
+                <span>{(donationConfig.totalCollected / LAMPORTS_PER_SOL).toFixed(2)} SOL raised</span>
+                <span>target: {(donationConfig.targetLamports / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
               </div>
+              <div className="w-full bg-neutral-200 rounded-full h-2 mb-2">
+                {(() => {
+                  const pct = Math.min(
+                    (donationConfig.totalCollected / Math.max(donationConfig.targetLamports, 1)) * 100,
+                    100,
+                  )
+                  return (
+                    <div className="bg-black h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                  )
+                })()}
+              </div>
+              <div className="text-center text-xs text-neutral-500">
+                {(() => {
+                  const now = Math.floor(Date.now() / 1000)
+                  const remaining = Math.max(0, donationConfig.endTs - now)
+                  const hrs = Math.floor(remaining / 3600)
+                  const mins = Math.floor((remaining % 3600) / 60)
+                  return <span>time left: {hrs}h {mins}m</span>
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* Contribution controls always visible; CTA is "join presale" */}
+          <>
 
               <div className="w-full space-y-6">
                 <div className="px-4 sm:px-6 lg:px-8 text-center">
@@ -891,6 +599,16 @@ export default function PresalePage() {
                     <span>0.1 SOL</span>
                     <span>1000 SOL</span>
                   </div>
+                  {/* Selected amount vs target bar */}
+                  <div className="w-full bg-neutral-200 rounded-full h-1 mt-3">
+                    {donationConfig && (() => {
+                      const selLamports = Math.floor(donationAmount[0] * LAMPORTS_PER_SOL)
+                      const pctSel = Math.min((selLamports / Math.max(donationConfig.targetLamports, 1)) * 100, 100)
+                      return (
+                        <div className="bg-black h-1 rounded-full" style={{ width: `${pctSel}%` }} />
+                      )
+                    })()}
+                  </div>
                 </div>
 
                 <div className="px-4 sm:px-6 lg:px-8">
@@ -902,25 +620,12 @@ export default function PresalePage() {
                     >
                       {loading ? 'processing...' : 
                        !donationConfig.isActive ? 'donations inactive' :
-                       'support project'}
+                       'join presale'}
                     </Button>
                   </div>
                 </div>
               </div>
             </>
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4">Success</div>
-              <h3 className="text-lg font-semibold lowercase mb-2">thank you for your support!</h3>
-              <p className="text-neutral-600 mb-6">you've completed the presale process and can now access the marketplace.</p>
-              <Button
-                onClick={() => window.location.href = '/app/marketplace'}
-                className="bg-black text-white hover:bg-black/90 lowercase"
-              >
-                enter marketplace
-              </Button>
-            </div>
-          )}
         </div>
       )}
     </main>

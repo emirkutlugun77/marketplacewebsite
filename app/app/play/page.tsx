@@ -1,9 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Image from "next/image"
+import { useWallet } from "@solana/wallet-adapter-react"
+import { PlayerSide } from "./types"
 import { Connection, PublicKey, SystemProgram, clusterApiUrl } from "@solana/web3.js"
 import { Program, AnchorProvider, BN, Idl } from "@coral-xyz/anchor"
-import { useWallet } from "@solana/wallet-adapter-react"
+// Remove duplicate import above
 import { getAssociatedTokenAddressSync } from "@solana/spl-token"
 
 const PROGRAM_ID = new PublicKey("12LJUQx5mfVfqACGgEac65Xe6PMGnYm5rdaRRcU4HE7V")
@@ -22,6 +25,47 @@ type RoomAccount = {
 
 export default function PlayPage() {
   const wallet = useWallet()
+  const [user, setUser] = useState<{ publicKey: string; chosenSide: keyof typeof PlayerSide } | null>(null)
+  const backendBase = 'http://localhost:3001'
+
+  // Load user from backend when wallet connects
+  useEffect(() => {
+    const load = async () => {
+      if (!wallet.publicKey) return
+      const pk = wallet.publicKey.toString()
+      console.log('Loading user for:', pk)
+      try {
+        const res = await fetch(`${backendBase}/users/by-public-key?publicKey=${pk}`)
+        console.log('User fetch response:', res.status)
+        if (res.ok) {
+          const u = await res.json()
+          console.log('User found:', u)
+          setUser({ publicKey: u.publicKey, chosenSide: u.chosenSide })
+        } else {
+          // Not found yet → try register silently
+          console.log('User not found, registering...')
+          await fetch(`${backendBase}/users/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicKey: pk }) })
+          setUser({ publicKey: pk, chosenSide: 'NOT_CHOSEN' as any })
+          console.log('User registered with NOT_CHOSEN')
+        }
+      } catch (e) {
+        console.error('Error loading user:', e)
+      }
+    }
+    load()
+  }, [wallet.publicKey])
+
+  // Choose side popup state
+  const [pendingSide, setPendingSide] = useState<keyof typeof PlayerSide | null>(null)
+  const confirmChoose = async () => {
+    if (!pendingSide || !wallet.publicKey) return
+    const pk = wallet.publicKey.toString()
+    try {
+      await fetch(`${backendBase}/users/choose-side`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicKey: pk, side: pendingSide }) })
+      setUser((prev) => (prev ? { ...prev, chosenSide: pendingSide } : prev))
+      setPendingSide(null)
+    } catch {}
+  }
   const [rpcUrl] = useState<string>(clusterApiUrl("devnet"))
   const [creating, setCreating] = useState(false)
   const [joining, setJoining] = useState(false)
@@ -194,6 +238,36 @@ export default function PlayPage() {
   return (
     <main className="min-h-[60vh]">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10">
+        {/* Choose side section */}
+        {user && user.chosenSide === 'NOT_CHOSEN' && (
+          <div className="w-full mb-12">
+            <h2 className="text-center text-5xl font-bold mb-12 lowercase">choose side</h2>
+            <div className="flex justify-center gap-12">
+              <button onClick={() => setPendingSide('DARK' as any)} className="relative group w-[30vw] aspect-[4/3] overflow-hidden border-2 border-black hover:border-gray-600 transition-all duration-300">
+                <Image src="/images/dark_side.jpeg" alt="dark side" fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
+              </button>
+              <button onClick={() => setPendingSide('HOLY' as any)} className="relative group w-[30vw] aspect-[4/3] overflow-hidden border-2 border-black hover:border-gray-600 transition-all duration-300">
+                <Image src="/images/holy_side.png" alt="holy side" fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
+              </button>
+            </div>
+
+            {/* Confirmation popup */}
+            {pendingSide && (
+              <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+                <div className="bg-white border-2 border-black p-8 w-full max-w-md">
+                  <div className="text-2xl font-bold mb-6 lowercase">confirm choice</div>
+                  <div className="mb-8 text-lg">are you sure to join {pendingSide.toLowerCase()} side?</div>
+                  <div className="flex justify-end gap-4">
+                    <button onClick={() => setPendingSide(null)} className="px-6 py-3 border-2 border-black hover:bg-gray-100 transition-colors">cancel</button>
+                    <button onClick={confirmChoose} className="px-6 py-3 bg-black text-white hover:bg-gray-800 transition-colors">confirm</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {user && user.chosenSide !== 'NOT_CHOSEN' && (
+        <>
         <h1 className="text-2xl font-semibold lowercase">play</h1>
         <p className="mt-2 text-neutral-600">Anchor programıyla oda oluştur, katıl ve listele.</p>
 
@@ -204,6 +278,8 @@ export default function PlayPage() {
           <div>Program: {program ? "Ready" : "Not ready"}</div>
           <div>Loaded IDL: {loadedIdl ? "Yes" : "No"}</div>
           <div>Collection Mint: {process.env.NEXT_PUBLIC_COLLECTION_MINT || "Not set"}</div>
+          <div>User: {user ? `${user.publicKey?.slice(0,8)}... - ${user.chosenSide}` : "Not loaded"}</div>
+          <div>Show Chooser: {user && user.chosenSide === 'NOT_CHOSEN' ? "YES" : "NO"}</div>
         </div>
 
         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -284,6 +360,8 @@ export default function PlayPage() {
             ))}
           </div>
         </div>
+        </>
+        )}
       </div>
     </main>
   )
