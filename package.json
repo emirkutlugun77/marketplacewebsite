@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "postinstall": "npm rebuild"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
