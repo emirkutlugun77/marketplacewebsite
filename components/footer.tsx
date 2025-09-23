@@ -121,7 +121,7 @@ export default function Footer() {
             <h3 className="text-lg font-semibold lowercase mb-6">community</h3>
             <div className="space-y-4">
               <a
-                href="https://twitter.com/minimega"
+                href="https://twitter.com/vybe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -129,7 +129,7 @@ export default function Footer() {
                 twitter
               </a>
               <a
-                href="https://discord.gg/minimega"
+                href="https://discord.gg/vybe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -137,7 +137,7 @@ export default function Footer() {
                 discord
               </a>
               <a
-                href="https://t.me/minimega"
+                href="https://t.me/vybe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -145,7 +145,7 @@ export default function Footer() {
                 telegram
               </a>
               <a
-                href="https://github.com/minimega"
+                href="https://github.com/vybe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -153,7 +153,7 @@ export default function Footer() {
                 github
               </a>
               <a
-                href="https://medium.com/@minimega"
+                href="https://medium.com/@vybe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -161,7 +161,7 @@ export default function Footer() {
                 medium
               </a>
               <a
-                href="https://reddit.com/r/minimega"
+                href="https://reddit.com/r/vybe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -177,32 +177,32 @@ export default function Footer() {
             <div className="space-y-4">
               <div>
                 <div className="text-xs text-white/70 lowercase mb-1">general inquiries</div>
-                <a href="mailto:hello@minimega.com" className="text-sm hover:text-white/70 transition-colors lowercase">
-                  hello@minimega.com
+                <a href="mailto:hello@vybe.com" className="text-sm hover:text-white/70 transition-colors lowercase">
+                  hello@vybe.com
                 </a>
               </div>
               <div>
                 <div className="text-xs text-white/70 lowercase mb-1">support</div>
                 <a
-                  href="mailto:support@minimega.com"
+                  href="mailto:support@vybe.com"
                   className="text-sm hover:text-white/70 transition-colors lowercase"
                 >
-                  support@minimega.com
+                  support@vybe.com
                 </a>
               </div>
               <div>
                 <div className="text-xs text-white/70 lowercase mb-1">partnerships</div>
                 <a
-                  href="mailto:partners@minimega.com"
+                  href="mailto:partners@vybe.com"
                   className="text-sm hover:text-white/70 transition-colors lowercase"
                 >
-                  partners@minimega.com
+                  partners@vybe.com
                 </a>
               </div>
               <div>
                 <div className="text-xs text-white/70 lowercase mb-1">press</div>
-                <a href="mailto:press@minimega.com" className="text-sm hover:text-white/70 transition-colors lowercase">
-                  press@minimega.com
+                <a href="mailto:press@vybe.com" className="text-sm hover:text-white/70 transition-colors lowercase">
+                  press@vybe.com
                 </a>
               </div>
             </div>
@@ -260,10 +260,10 @@ export default function Footer() {
                 </div>
                 <div className="pt-2 border-t border-white/20">
                   <a
-                    href="mailto:careers@minimega.com"
+                    href="mailto:careers@vybe.com"
                     className="text-sm hover:text-white/70 transition-colors lowercase"
                   >
-                    careers@minimega.com
+                    careers@vybe.com
                   </a>
                 </div>
               </div>
@@ -278,9 +278,9 @@ export default function Footer() {
             <div className="p-6 flex items-center">
               <div>
                 <div className="font-semibold text-lg lowercase mb-1">
-                  <span>mini</span> <span className="text-white/70">mega</span>
+                  <span>vybe</span>
                 </div>
-                <div className="text-xs text-white/50 lowercase">© 2024 mini mega. all rights reserved.</div>
+                <div className="text-xs text-white/50 lowercase">© 2024 vybe. all rights reserved.</div>
               </div>
             </div>
 

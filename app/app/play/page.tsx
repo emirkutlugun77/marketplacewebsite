@@ -26,7 +26,7 @@ type RoomAccount = {
 export default function PlayPage() {
   const wallet = useWallet()
   const [user, setUser] = useState<{ publicKey: string; chosenSide: keyof typeof PlayerSide } | null>(null)
-  const backendBase = 'http://localhost:3001'
+  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
 
   // Load user from backend when wallet connects
   useEffect(() => {

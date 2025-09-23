@@ -79,7 +79,7 @@ function WalletConnectInner() {
   React.useEffect(() => {
     const address = publicKey?.toString()
     if (!connected || !address) return
-    fetch('http://localhost:3001/users/register', {
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/users/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ publicKey: address }),

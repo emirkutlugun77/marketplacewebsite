@@ -123,7 +123,7 @@ export default function TokenPage() {
       <section className="relative h-[100vh] flex items-center justify-center overflow-hidden p-4 sm:p-8">
         {/* Background breathing text */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="breathe-text">mini</span>
+          <span className="breathe-text">vybe</span>
         </div>
 
         {/* Floating coin and lines */}
@@ -135,7 +135,7 @@ export default function TokenPage() {
           <div className="mb-8 animate-float">
             <img
               src="/images/new-token-coin.png"
-              alt="MINI Token"
+              alt="VYBE Token"
               className="w-80 h-80 sm:w-96 sm:h-96 object-contain drop-shadow-2xl hover:scale-110 transition-transform duration-500 ease-out"
             />
           </div>
@@ -241,7 +241,7 @@ export default function TokenPage() {
                     <h3 className="text-lg font-semibold lowercase mb-6">community</h3>
                     <div className="space-y-4">
                       <a
-                        href="https://twitter.com/minimega"
+                        href="https://twitter.com/vybe"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -249,7 +249,7 @@ export default function TokenPage() {
                         twitter
                       </a>
                       <a
-                        href="https://discord.gg/minimega"
+                        href="https://discord.gg/vybe"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -257,7 +257,7 @@ export default function TokenPage() {
                         discord
                       </a>
                       <a
-                        href="https://t.me/minimega"
+                        href="https://t.me/vybe"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -265,7 +265,7 @@ export default function TokenPage() {
                         telegram
                       </a>
                       <a
-                        href="https://github.com/minimega"
+                        href="https://github.com/vybe"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-sm hover:text-white/70 transition-colors lowercase"
@@ -282,19 +282,19 @@ export default function TokenPage() {
                       <div>
                         <div className="text-xs text-white/70 lowercase mb-1">general</div>
                         <a
-                          href="mailto:hello@minimega.com"
+                          href="mailto:hello@vybe.com"
                           className="text-sm hover:text-white/70 transition-colors lowercase"
                         >
-                          hello@minimega.com
+                          hello@vybe.com
                         </a>
                       </div>
                       <div>
                         <div className="text-xs text-white/70 lowercase mb-1">support</div>
                         <a
-                          href="mailto:support@minimega.com"
+                          href="mailto:support@vybe.com"
                           className="text-sm hover:text-white/70 transition-colors lowercase"
                         >
-                          support@minimega.com
+                          support@vybe.com
                         </a>
                       </div>
                     </div>
@@ -311,7 +311,7 @@ export default function TokenPage() {
                         terms of service
                       </a>
                       <div className="pt-4 border-t border-white/20">
-                        <div className="text-xs text-white/50 lowercase">© 2024 mini mega</div>
+                        <div className="text-xs text-white/50 lowercase">© 2024 vybe</div>
                       </div>
                     </div>
                   </div>

@@ -8,7 +8,7 @@ const docSections = [
   {
     title: "overview",
     items: [
-      { title: "what is mini mega?", slug: "what-is-mini-mega" },
+      { title: "what is vybe?", slug: "what-is-vybe" },
       { title: "getting started", slug: "getting-started" },
       { title: "tokenomics", slug: "tokenomics" },
     ],
@@ -49,9 +49,9 @@ const docSections = [
 ]
 
 const docContent = {
-  "what-is-mini-mega": {
-    title: "what is mini mega?",
-    content: `mini mega is a revolutionary gaming finance platform that bridges traditional strategy gaming with decentralized finance. Built on Solana, we combine the engaging mechanics of clash-style games with the financial opportunities of DeFi.
+  "what-is-vybe": {
+    title: "what is vybe?",
+    content: `vybe is a revolutionary gaming finance platform that bridges traditional strategy gaming with decentralized finance. Built on Solana, we combine the engaging mechanics of clash-style games with the financial opportunities of DeFi.
 
 our platform allows players to truly own their in-game assets, trade them freely, and earn real value through gameplay. every building, troop, and resource in the game is tokenized, creating a player-driven economy where skill and strategy translate to financial rewards.
 
@@ -59,13 +59,13 @@ the core philosophy is simple: gaming should be rewarding, ownership should be r
   },
   "getting-started": {
     title: "getting started",
-    content: `welcome to mini mega! here's how to begin your journey:
+    content: `welcome to vybe! here's how to begin your journey:
 
 **step 1: connect your wallet**
-use phantom, solflare, or any solana-compatible wallet to connect to the platform. this wallet will hold your $mini tokens and all in-game assets.
+use phantom, solflare, or any solana-compatible wallet to connect to the platform. this wallet will hold your $vybe tokens and all in-game assets.
 
-**step 2: acquire $mini tokens**
-purchase $mini tokens through our token page or earn them through gameplay. these tokens are used for crafting, trading, and participating in dual battles.
+**step 2: acquire $vybe tokens**
+purchase $vybe tokens through our token page or earn them through gameplay. these tokens are used for crafting, trading, and participating in dual battles.
 
 **step 3: build your village**
 start with basic buildings like elixir collectors and defensive structures. each building generates resources and contributes to your village's strength.
@@ -74,11 +74,11 @@ start with basic buildings like elixir collectors and defensive structures. each
 browse the store for buildings, troops, and crafting materials. all items are player-owned nfts that can be traded freely.
 
 **step 5: engage in battles**
-participate in dual battles to test your strategy and earn rewards. stake $mini tokens to enter matches and compete against other players.`,
+participate in dual battles to test your strategy and earn rewards. stake $vybe tokens to enter matches and compete against other players.`,
   },
   tokenomics: {
     title: "tokenomics",
-    content: `the $mini token is the cornerstone of our gaming economy, designed to create sustainable value for players and stakeholders.
+    content: `the $vybe token is the cornerstone of our gaming economy, designed to create sustainable value for players and stakeholders.
 
 **token distribution:**
 - 40% community rewards and gameplay incentives
@@ -105,7 +105,7 @@ participate in dual battles to test your strategy and earn rewards. stake $mini 
   },
   "village-system": {
     title: "village system",
-    content: `the village is your base of operations in mini mega. unlike traditional games, every structure you build is a tokenized asset that you truly own.
+    content: `the village is your base of operations in vybe. unlike traditional games, every structure you build is a tokenized asset that you truly own.
 
 **building categories:**
 - **resource generators**: elixir collectors, gold mines, and material extractors
@@ -114,7 +114,7 @@ participate in dual battles to test your strategy and earn rewards. stake $mini 
 - **storage**: secure vaults for your resources and materials
 
 **upgrade mechanics:**
-buildings can be upgraded using crafted materials and $mini tokens. higher level structures generate more resources and provide better defensive capabilities.
+buildings can be upgraded using crafted materials and $vybe tokens. higher level structures generate more resources and provide better defensive capabilities.
 
 **ownership model:**
 every building is minted as an nft when constructed. you can trade, sell, or transfer buildings to other players, creating a dynamic real estate market within the game.
@@ -124,7 +124,7 @@ village layout affects both resource generation and defensive capabilities. opti
   },
   "dual-battles": {
     title: "dual battles",
-    content: `dual battles are competitive matches where players stake $mini tokens and compete in strategic combat scenarios.
+    content: `dual battles are competitive matches where players stake $vybe tokens and compete in strategic combat scenarios.
 
 **battle mechanics:**
 - players select their army composition from owned troops
@@ -144,16 +144,16 @@ village layout affects both resource generation and defensive capabilities. opti
 **rewards structure:**
 - winner takes 90% of the total stake
 - 5% goes to the platform treasury
-- 5% distributed to $mini token stakers as yield`,
+- 5% distributed to $vybe token stakers as yield`,
   },
   "crafting-system": {
     title: "crafting system",
-    content: `the crafting system allows players to create advanced items and materials using basic resources and $mini tokens.
+    content: `the crafting system allows players to create advanced items and materials using basic resources and $vybe tokens.
 
 **crafting materials:**
 - **scrap metal**: basic material obtained from battles and resource generation
 - **precious metal**: refined material created from scrap metal
-- **machined metal**: advanced component requiring precious metals and $mini tokens
+- **machined metal**: advanced component requiring precious metals and $vybe tokens
 
 **craftable items:**
 - **building tokens**: unlock new building types and upgrades
@@ -173,7 +173,7 @@ export default function DocsPage() {
   const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({
     overview: true,
   })
-  const [activeItem, setActiveItem] = React.useState("what-is-mini-mega")
+  const [activeItem, setActiveItem] = React.useState("what-is-vybe")
   const [collapsed, setCollapsed] = React.useState(false)
 
   const toggleSection = (section: string) => {
@@ -197,7 +197,7 @@ export default function DocsPage() {
   // Breadcrumb navigation
   const navigateToBreadcrumb = (level: string) => {
     if (level === "docs") {
-      setActiveItem("what-is-mini-mega")
+      setActiveItem("what-is-vybe")
     } else if (level === currentSection?.title) {
       setActiveItem(currentSection.items[0].slug)
     }

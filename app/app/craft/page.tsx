@@ -165,7 +165,7 @@ export default function CraftPage() {
                     height: "11.11%", // 1 row
                   }}
                 >
-                  <span className="text-xs lowercase text-gray-600">{selectedRecipe.cost} $mini</span>
+                  <span className="text-xs lowercase text-gray-600">{selectedRecipe.cost} $vybe</span>
                 </div>
               )}
             </div>

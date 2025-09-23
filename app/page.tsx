@@ -58,7 +58,7 @@ export default function Page() {
       <header className="w-full relative z-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="font-semibold tracking-tight text-lg sm:text-xl text-white drop-shadow-lg">
-            <span className="font-sans">mini</span> <span className="font-sans text-white/80">mega</span>
+            <span className="font-sans">vybe</span>
           </div>
           <div className="[&_button]:text-white [&_button]:border-white/30 [&_button]:hover:bg-white/10">
             <WalletConnect />

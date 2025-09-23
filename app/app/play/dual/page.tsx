@@ -84,7 +84,7 @@ function CreateBidDialog() {
           <div className="py-6 space-y-6">
             <div className="text-center">
               <span className="text-3xl font-bold">${bidAmount[0]}</span>
-              <span className="text-sm text-neutral-500"> MINI</span>
+              <span className="text-sm text-neutral-500"> VYBE</span>
             </div>
             <Slider
               defaultValue={bidAmount}
@@ -93,14 +93,14 @@ function CreateBidDialog() {
               onValueChange={setBidAmount}
               className="w-full"
             />
-            <div className="text-xs text-center text-neutral-600">Your balance: ${userBalance} MINI</div>
-            <Button className="w-full" onClick={() => alert(`Bid for ${bidAmount[0]} MINI confirmed!`)}>
+            <div className="text-xs text-center text-neutral-600">Your balance: ${userBalance} VYBE</div>
+            <Button className="w-full" onClick={() => alert(`Bid for ${bidAmount[0]} VYBE confirmed!`)}>
               Confirm Bid
             </Button>
           </div>
         ) : (
           <div className="py-6 text-center">
-            <p className="text-neutral-700 mb-4">Acquire $MINI tokens to participate.</p>
+            <p className="text-neutral-700 mb-4">Acquire $VYBE tokens to participate.</p>
             <Button>Purchase Tokens</Button>
           </div>
         )}
@@ -177,7 +177,7 @@ export default function DualPage() {
               className="group relative aspect-square border border-black flex items-center justify-center cursor-pointer hover:bg-black hover:text-white transition-colors"
             >
               <div className="text-center">
-                <div className="text-xs text-neutral-500 group-hover:text-neutral-400">$MINI</div>
+                <div className="text-xs text-neutral-500 group-hover:text-neutral-400">$VYBE</div>
                 <div className="text-2xl font-bold">{listing.amount}</div>
               </div>
               <div className="absolute inset-0 bg-black/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">

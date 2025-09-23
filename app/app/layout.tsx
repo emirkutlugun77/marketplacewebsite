@@ -10,7 +10,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <header className="w-full border-b border-black">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="font-semibold tracking-tight text-lg sm:text-xl">
-            <span className="font-sans">mini</span> <span className="font-sans text-neutral-800">mega</span>
+            <span className="font-sans">vybe</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <AppMenu />

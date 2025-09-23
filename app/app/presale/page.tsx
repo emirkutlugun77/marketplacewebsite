@@ -340,7 +340,7 @@ export default function PresalePage() {
       <main className="min-h-[calc(100vh-4rem)] bg-white flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-3xl font-semibold tracking-tight lowercase mb-4">
-            mini mega presale
+            vybe presale
           </h1>
           <p className="text-neutral-600 mb-8">
             Connect your wallet to get started
@@ -578,7 +578,7 @@ export default function PresalePage() {
                     {donationAmount[0].toFixed(2)} <span className="text-lg font-normal text-neutral-600">SOL</span>
                   </div>
                   <div className="text-sm text-neutral-500">
-                    help us build the future of mini&mega
+                    help us build the future of vybe
                   </div>
                 </div>
 
