@@ -1,46 +1,1549 @@
 {
   "address": "8KzE3LCicxv13iJx2v2V4VQQNWt4QHuvfuH8jxYnkGQ1",
-  "metadata": { "name": "nft_marketplace", "version": "0.1.0", "spec": "0.1.0", "description": "Created with Anchor" },
+  "metadata": {
+    "name": "nft_marketplace",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
   "instructions": [
-    { "name": "contribute_presale", "discriminator": [248,72,28,96,70,166,8,117], "accounts": [ { "name": "presale", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [112,114,101,115,97,108,101] } ] } }, { "name": "contribution", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [99,111,110,116,114,105,98] }, { "kind": "account", "path": "presale" }, { "kind": "account", "path": "contributor" } ] } }, { "name": "contributor", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" } ], "args": [ { "name": "lamports", "type": "u64" } ] },
-    { "name": "create_nft_collection", "discriminator": [39,179,4,147,128,226,252,134], "accounts": [ { "name": "marketplace", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,97,114,107,101,116,112,108,97,99,101] } ] } }, { "name": "collection", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [99,111,108,108,101,99,116,105,111,110] }, { "kind": "arg", "path": "collection_name" } ] } }, { "name": "collection_mint", "writable": true, "signer": true }, { "name": "admin_token_account", "writable": true, "pda": { "seeds": [ { "kind": "account", "path": "admin" }, { "kind": "const", "value": [6,221,246,225,215,101,161,147,217,203,225,70,206,235,121,172,28,180,133,237,95,91,55,145,58,140,245,133,126,255,0,169] }, { "kind": "account", "path": "collection_mint" } ], "program": { "kind": "const", "value": [140,151,37,143,78,36,137,241,187,61,16,41,20,142,13,131,11,90,19,153,218,255,16,132,4,142,123,216,219,233,248,89] } } }, { "name": "collection_metadata", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "collection_mint" } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "collection_master_edition", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "collection_mint" }, { "kind": "const", "value": [101,100,105,116,105,111,110] } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "admin", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" }, { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" }, { "name": "associated_token_program", "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" }, { "name": "token_metadata_program" }, { "name": "rent", "address": "SysvarRent111111111111111111111111111111111" } ], "args": [ { "name": "collection_name", "type": "string" }, { "name": "symbol", "type": "string" }, { "name": "uri", "type": "string" }, { "name": "royalty", "type": "u16" } ] },
-    { "name": "create_nft_type", "discriminator": [213,255,55,57,94,49,146,192], "accounts": [ { "name": "collection", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [99,111,108,108,101,99,116,105,111,110] }, { "kind": "account", "path": "collection.name", "account": "NFTCollection" } ] } }, { "name": "nft_type", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [116,121,112,101] }, { "kind": "account", "path": "collection" }, { "kind": "arg", "path": "type_name" } ] } }, { "name": "admin", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" } ], "args": [ { "name": "type_name", "type": "string" }, { "name": "uri", "type": "string" }, { "name": "price", "type": "u64" }, { "name": "max_supply", "type": "u64" } ] },
-    { "name": "create_room", "discriminator": [130,166,32,2,247,120,178,53], "accounts": [ { "name": "room", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [114,111,111,109] }, { "kind": "account", "path": "creator" }, { "kind": "arg", "path": "room_id" } ] } }, { "name": "creator", "writable": true, "signer": true }, { "name": "nft_mint" }, { "name": "nft_metadata", "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "nft_mint" } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "collection_mint" }, { "name": "creator_nft_token" }, { "name": "system_program", "address": "11111111111111111111111111111111" }, { "name": "token_metadata_program" } ], "args": [ { "name": "room_id", "type": "u64" }, { "name": "stake_lamports", "type": "u64" } ] },
-    { "name": "end_presale", "discriminator": [54,154,35,93,29,58,10,208], "accounts": [ { "name": "presale", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [112,114,101,115,97,108,101] } ] } }, { "name": "admin", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" } ], "args": [] },
-    { "name": "initialize_marketplace", "discriminator": [47,81,64,0,96,56,105,7], "accounts": [ { "name": "marketplace", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,97,114,107,101,116,112,108,97,99,101] } ] } }, { "name": "admin", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" } ], "args": [ { "name": "fee_bps", "type": "u16" } ] },
-    { "name": "initialize_presale", "discriminator": [9,174,12,126,150,119,68,100], "accounts": [ { "name": "presale", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [112,114,101,115,97,108,101] } ] } }, { "name": "admin", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" } ], "args": [] },
-    { "name": "join_room", "discriminator": [95,232,188,81,124,130,78,139], "accounts": [ { "name": "room", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [114,111,111,109] }, { "kind": "account", "path": "creator" }, { "kind": "account", "path": "room.room_id", "account": "Room" } ] } }, { "name": "creator", "relations": ["room"] }, { "name": "challenger", "writable": true, "signer": true }, { "name": "nft_mint" }, { "name": "nft_metadata", "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "nft_mint" } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "collection_mint" }, { "name": "challenger_nft_token" }, { "name": "system_program", "address": "11111111111111111111111111111111" }, { "name": "token_metadata_program" } ], "args": [] },
-    { "name": "mint_nft_from_collection", "discriminator": [157,81,72,124,57,0,110,9], "accounts": [ { "name": "collection", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [99,111,108,108,101,99,116,105,111,110] }, { "kind": "account", "path": "collection.name", "account": "NFTCollection" } ] } }, { "name": "nft_type", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [116,121,112,101] }, { "kind": "account", "path": "collection" }, { "kind": "arg", "path": "type_name" } ] } }, { "name": "nft_mint", "writable": true, "signer": true }, { "name": "buyer_token_account", "writable": true, "pda": { "seeds": [ { "kind": "account", "path": "buyer" }, { "kind": "const", "value": [6,221,246,225,215,101,161,147,217,203,225,70,206,235,121,172,28,180,133,237,95,91,55,145,58,140,245,133,126,255,0,169] }, { "kind": "account", "path": "nft_mint" } ], "program": { "kind": "const", "value": [140,151,37,143,78,36,137,241,187,61,16,41,20,142,13,131,11,90,19,153,218,255,16,132,4,142,123,216,219,233,248,89] } } }, { "name": "nft_metadata", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "nft_mint" } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "collection_metadata", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "collection_mint_account" } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "collection_master_edition", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [109,101,116,97,100,97,116,97] }, { "kind": "account", "path": "token_metadata_program" }, { "kind": "account", "path": "collection_mint_account" }, { "kind": "const", "value": [101,100,105,116,105,111,110] } ], "program": { "kind": "account", "path": "token_metadata_program" } } }, { "name": "collection_mint_account" }, { "name": "collection_admin", "writable": true, "signer": true }, { "name": "buyer", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" }, { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" }, { "name": "associated_token_program", "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" }, { "name": "token_metadata_program" }, { "name": "rent", "address": "SysvarRent111111111111111111111111111111111" } ], "args": [ { "name": "type_name", "type": "string" } ] },
-    { "name": "resolve_room", "discriminator": [168,135,180,146,219,38,33,57], "accounts": [ { "name": "room", "writable": true, "pda": { "seeds": [ { "kind": "const", "value": [114,111,111,109] }, { "kind": "account", "path": "creator" }, { "kind": "account", "path": "room.room_id", "account": "Room" } ] } }, { "name": "creator", "writable": true, "signer": true }, { "name": "system_program", "address": "11111111111111111111111111111111" } ], "args": [] }
+    {
+      "name": "contribute_presale",
+      "discriminator": [
+        248,
+        72,
+        28,
+        96,
+        70,
+        166,
+        8,
+        117
+      ],
+      "accounts": [
+        {
+          "name": "presale",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  101,
+                  115,
+                  97,
+                  108,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  114,
+                  105,
+                  98
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "presale"
+              },
+              {
+                "kind": "account",
+                "path": "contributor"
+              }
+            ]
+          }
+        },
+        {
+          "name": "contributor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_nft_collection",
+      "discriminator": [
+        39,
+        179,
+        4,
+        147,
+        128,
+        226,
+        252,
+        134
+      ],
+      "accounts": [
+        {
+          "name": "marketplace",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  112,
+                  108,
+                  97,
+                  99,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collection",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  101,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "collection_name"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collection_mint",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "admin_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "admin"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collection_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "collection_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection_mint"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "collection_master_edition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection_mint"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  100,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_metadata_program"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "collection_name",
+          "type": "string"
+        },
+        {
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "name": "uri",
+          "type": "string"
+        },
+        {
+          "name": "royalty",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "create_nft_type",
+      "discriminator": [
+        213,
+        255,
+        55,
+        57,
+        94,
+        49,
+        146,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "collection",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  101,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collection.name",
+                "account": "NFTCollection"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nft_type",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  121,
+                  112,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              },
+              {
+                "kind": "arg",
+                "path": "type_name"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "type_name",
+          "type": "string"
+        },
+        {
+          "name": "uri",
+          "type": "string"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "max_supply",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_room",
+      "discriminator": [
+        130,
+        166,
+        32,
+        2,
+        247,
+        120,
+        178,
+        53
+      ],
+      "accounts": [
+        {
+          "name": "room",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "room_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "nft_mint"
+        },
+        {
+          "name": "nft_metadata",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "nft_mint"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "collection_mint"
+        },
+        {
+          "name": "creator_nft_token"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_metadata_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "room_id",
+          "type": "u64"
+        },
+        {
+          "name": "stake_lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "end_presale",
+      "discriminator": [
+        54,
+        154,
+        35,
+        93,
+        29,
+        58,
+        10,
+        208
+      ],
+      "accounts": [
+        {
+          "name": "presale",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  101,
+                  115,
+                  97,
+                  108,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_marketplace",
+      "discriminator": [
+        47,
+        81,
+        64,
+        0,
+        96,
+        56,
+        105,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "marketplace",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  112,
+                  108,
+                  97,
+                  99,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "initialize_presale",
+      "discriminator": [
+        9,
+        174,
+        12,
+        126,
+        150,
+        119,
+        68,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "presale",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  101,
+                  115,
+                  97,
+                  108,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "join_room",
+      "discriminator": [
+        95,
+        232,
+        188,
+        81,
+        124,
+        130,
+        78,
+        139
+      ],
+      "accounts": [
+        {
+          "name": "room",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "room.room_id",
+                "account": "Room"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "relations": [
+            "room"
+          ]
+        },
+        {
+          "name": "challenger",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "nft_mint"
+        },
+        {
+          "name": "nft_metadata",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "nft_mint"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "collection_mint"
+        },
+        {
+          "name": "challenger_nft_token"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_metadata_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mint_nft_from_collection",
+      "discriminator": [
+        157,
+        81,
+        72,
+        124,
+        57,
+        0,
+        110,
+        9
+      ],
+      "accounts": [
+        {
+          "name": "collection",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  101,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collection.name",
+                "account": "NFTCollection"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nft_type",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  121,
+                  112,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              },
+              {
+                "kind": "arg",
+                "path": "type_name"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nft_mint",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "buyer_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "nft_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "nft_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "nft_mint"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "collection_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection_mint_account"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "collection_master_edition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection_mint_account"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  100,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
+        },
+        {
+          "name": "collection_mint_account"
+        },
+        {
+          "name": "collection_admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_metadata_program"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "type_name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "resolve_room",
+      "discriminator": [
+        168,
+        135,
+        180,
+        146,
+        219,
+        38,
+        33,
+        57
+      ],
+      "accounts": [
+        {
+          "name": "room",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "room.room_id",
+                "account": "Room"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "restart_presale",
+      "discriminator": [
+        131,
+        80,
+        101,
+        231,
+        146,
+        247,
+        139,
+        142
+      ],
+      "accounts": [
+        {
+          "name": "presale",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  101,
+                  115,
+                  97,
+                  108,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    }
   ],
   "accounts": [
-    { "name": "Marketplace", "discriminator": [70,222,41,62,78,3,32,174] },
-    { "name": "NFTCollection", "discriminator": [243,209,195,150,192,176,151,165] },
-    { "name": "NftType", "discriminator": [243,24,2,128,204,145,35,223] },
-    { "name": "Presale", "discriminator": [38,215,222,14,115,220,52,168] },
-    { "name": "PresaleContribution", "discriminator": [81,178,219,211,44,158,224,47] },
-    { "name": "Room", "discriminator": [156,199,67,27,222,23,185,94] }
+    {
+      "name": "Marketplace",
+      "discriminator": [
+        70,
+        222,
+        41,
+        62,
+        78,
+        3,
+        32,
+        174
+      ]
+    },
+    {
+      "name": "NFTCollection",
+      "discriminator": [
+        243,
+        209,
+        195,
+        150,
+        192,
+        176,
+        151,
+        165
+      ]
+    },
+    {
+      "name": "NftType",
+      "discriminator": [
+        243,
+        24,
+        2,
+        128,
+        204,
+        145,
+        35,
+        223
+      ]
+    },
+    {
+      "name": "Presale",
+      "discriminator": [
+        38,
+        215,
+        222,
+        14,
+        115,
+        220,
+        52,
+        168
+      ]
+    },
+    {
+      "name": "PresaleContribution",
+      "discriminator": [
+        81,
+        178,
+        219,
+        211,
+        44,
+        158,
+        224,
+        47
+      ]
+    },
+    {
+      "name": "Room",
+      "discriminator": [
+        156,
+        199,
+        67,
+        27,
+        222,
+        23,
+        185,
+        94
+      ]
+    }
   ],
   "errors": [
-    { "code": 6000, "name": "CollectionInactive", "msg": "Collection is not active" },
-    { "code": 6001, "name": "CollectionSoldOut", "msg": "Collection is sold out" },
-    { "code": 6002, "name": "InsufficientFunds", "msg": "Insufficient funds" },
-    { "code": 6003, "name": "Unauthorized", "msg": "Unauthorized access" },
-    { "code": 6004, "name": "RoomNotWaiting", "msg": "Room is not in waiting state" },
-    { "code": 6005, "name": "RoomNotOngoing", "msg": "Room is not in ongoing state" },
-    { "code": 6006, "name": "RoomHasChallenger", "msg": "Room already has a challenger" },
-    { "code": 6007, "name": "PresaleNotActive", "msg": "Presale is not active" },
-    { "code": 6008, "name": "PresaleEnded", "msg": "Presale has ended" },
-    { "code": 6009, "name": "PresaleNotEnded", "msg": "Presale cannot be ended yet" }
+    {
+      "code": 6000,
+      "name": "CollectionInactive",
+      "msg": "Collection is not active"
+    },
+    {
+      "code": 6001,
+      "name": "CollectionSoldOut",
+      "msg": "Collection is sold out"
+    },
+    {
+      "code": 6002,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds"
+    },
+    {
+      "code": 6003,
+      "name": "Unauthorized",
+      "msg": "Unauthorized access"
+    },
+    {
+      "code": 6004,
+      "name": "RoomNotWaiting",
+      "msg": "Room is not in waiting state"
+    },
+    {
+      "code": 6005,
+      "name": "RoomNotOngoing",
+      "msg": "Room is not in ongoing state"
+    },
+    {
+      "code": 6006,
+      "name": "RoomHasChallenger",
+      "msg": "Room already has a challenger"
+    },
+    {
+      "code": 6007,
+      "name": "PresaleNotActive",
+      "msg": "Presale is not active"
+    },
+    {
+      "code": 6008,
+      "name": "PresaleEnded",
+      "msg": "Presale has ended"
+    },
+    {
+      "code": 6009,
+      "name": "PresaleNotEnded",
+      "msg": "Presale cannot be ended yet"
+    }
   ],
   "types": [
-    { "name": "Marketplace", "type": { "kind": "struct", "fields": [ { "name": "admin", "type": "pubkey" }, { "name": "fee_bps", "type": "u16" }, { "name": "total_collections", "type": "u64" }, { "name": "bump", "type": "u8" } ] } },
-    { "name": "NFTCollection", "type": { "kind": "struct", "fields": [ { "name": "admin", "type": "pubkey" }, { "name": "name", "type": "string" }, { "name": "symbol", "type": "string" }, { "name": "uri", "type": "string" }, { "name": "royalty", "type": "u16" }, { "name": "mint", "type": "pubkey" }, { "name": "is_active", "type": "bool" }, { "name": "bump", "type": "u8" } ] } },
-    { "name": "NftType", "type": { "kind": "struct", "fields": [ { "name": "collection", "type": "pubkey" }, { "name": "name", "type": "string" }, { "name": "uri", "type": "string" }, { "name": "price", "type": "u64" }, { "name": "max_supply", "type": "u64" }, { "name": "current_supply", "type": "u64" }, { "name": "bump", "type": "u8" } ] } },
-    { "name": "Presale", "type": { "kind": "struct", "fields": [ { "name": "admin", "type": "pubkey" }, { "name": "start_ts", "type": "i64" }, { "name": "end_ts", "type": "i64" }, { "name": "total_raised", "type": "u64" }, { "name": "target_lamports", "type": "u64" }, { "name": "is_active", "type": "bool" }, { "name": "bump", "type": "u8" } ] } },
-    { "name": "PresaleContribution", "type": { "kind": "struct", "fields": [ { "name": "presale", "type": "pubkey" }, { "name": "contributor", "type": "pubkey" }, { "name": "amount", "type": "u64" }, { "name": "bump", "type": "u8" } ] } },
-    { "name": "Room", "type": { "kind": "struct", "fields": [ { "name": "creator", "type": "pubkey" }, { "name": "challenger", "type": { "option": "pubkey" } }, { "name": "room_id", "type": "u64" }, { "name": "stake_lamports", "type": "u64" }, { "name": "status", "type": "u8" }, { "name": "bump", "type": "u8" } ] } }
+    {
+      "name": "Marketplace",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "total_collections",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NFTCollection",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          },
+          {
+            "name": "royalty",
+            "type": "u16"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NftType",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "collection",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "max_supply",
+            "type": "u64"
+          },
+          {
+            "name": "current_supply",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Presale",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "end_ts",
+            "type": "i64"
+          },
+          {
+            "name": "total_raised",
+            "type": "u64"
+          },
+          {
+            "name": "target_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PresaleContribution",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "presale",
+            "type": "pubkey"
+          },
+          {
+            "name": "contributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Room",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "challenger",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "room_id",
+            "type": "u64"
+          },
+          {
+            "name": "stake_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
   ]
 }
-
-

@@ -10,6 +10,7 @@ import idl from '@/app/lib/idl/nft_marketplace.json'
 import { 
   PublicKey, 
   Transaction, 
+  TransactionInstruction,
   SystemProgram, 
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js'
@@ -70,7 +71,7 @@ interface Donor {
 }
 
 export default function PresalePage() {
-  const { publicKey, connected, signTransaction, signAllTransactions } = useWallet()
+  const { publicKey, connected, signTransaction, signAllTransactions, sendTransaction } = useWallet()
   const { connection } = useConnection()
   
   // State management
@@ -80,6 +81,7 @@ export default function PresalePage() {
   const [presaleConfig, setPresaleConfig] = React.useState<PresaleConfig | null>(null)
   const [marketplace, setMarketplace] = React.useState<MarketplaceData | null>(null)
   const [donationConfig, setDonationConfig] = React.useState<DonationConfig | null>(null)
+  const [pdaBalanceLamports, setPdaBalanceLamports] = React.useState<number>(0)
   
   // Donation states
   const [donationAmount, setDonationAmount] = React.useState([0.1])
@@ -89,6 +91,7 @@ export default function PresalePage() {
   const [showDonorModal, setShowDonorModal] = React.useState(false)
   const [donors, setDonors] = React.useState<Donor[]>([])
   const [loadingDonors, setLoadingDonors] = React.useState(false)
+  const [directContribs, setDirectContribs] = React.useState<Donor[]>([])
 
   // Helper functions
   const getMarketplacePDA = () => {
@@ -136,6 +139,79 @@ export default function PresalePage() {
     }
   }
 
+  // Fetch direct lamports transfers to PDA (handles users who sent SOL directly)
+  const fetchDirectContributors = async () => {
+    if (!connection) return
+    try {
+      const presalePDA = getPresalePDA()
+      const maxPages = 10
+      let before: string | undefined = undefined
+      const contributions = new Map<string, { amount: number, lastSig: string, ts: number }>()
+
+      for (let page = 0; page < maxPages; page++) {
+        let sigs
+        try {
+          sigs = await connection.getSignaturesForAddress(presalePDA, before ? { before, limit: 25 } : { limit: 25 })
+        } catch (e) {
+          // Rate limit backoff
+          await new Promise(r => setTimeout(r, (page + 1) * 900))
+          break
+        }
+        if (!sigs || sigs.length === 0) break
+        before = sigs[sigs.length - 1].signature
+
+        for (const s of sigs) {
+          try {
+            const tx = await connection.getParsedTransaction(s.signature, { maxSupportedTransactionVersion: 0 })
+            if (!tx) continue
+            const meta: any = tx.meta
+            const msg: any = tx.transaction.message
+            const keys: any[] = msg.accountKeys || []
+            const pdaIndex = keys.findIndex(k => (k.pubkey?.toBase58?.() || k.pubkey?.toString?.() || k?.toString?.()) === presalePDA.toString())
+            if (pdaIndex < 0) continue
+            const pre = meta?.preBalances?.[pdaIndex]
+            const post = meta?.postBalances?.[pdaIndex]
+            if (typeof pre !== 'number' || typeof post !== 'number') continue
+            const delta = post - pre
+            if (delta <= 0) continue
+            // collect all senders: any account whose balance decreased
+            let largestNeg = { addr: '', amt: 0 }
+            for (let i = 0; i < (meta?.preBalances?.length || 0); i++) {
+              if (i === pdaIndex) continue
+              const prei = meta.preBalances?.[i] || 0
+              const posti = meta.postBalances?.[i] || 0
+              const di = posti - prei
+              if (di < 0) {
+                const key = keys[i]
+                const senderAddr = (key?.pubkey?.toBase58?.() || key?.pubkey?.toString?.() || key?.toString?.() || '')
+                const prev = contributions.get(senderAddr)
+                const nowAmt = (prev?.amount || 0) + Math.abs(di)
+                contributions.set(senderAddr, { amount: nowAmt, lastSig: s.signature, ts: (tx.blockTime || 0) * 1000 })
+                if (Math.abs(di) > largestNeg.amt) largestNeg = { addr: senderAddr, amt: Math.abs(di) }
+              }
+            }
+            // light rate-limit
+            await new Promise(r => setTimeout(r, 180))
+          } catch {
+            // swallow single tx parse errors
+          }
+        }
+      }
+
+      const list: Donor[] = Array.from(contributions.entries()).map(([addr, v]) => ({
+        address: addr,
+        amount: v.amount,
+        timestamp: v.ts || Date.now(),
+        txSignature: v.lastSig,
+      }))
+      // Sort by amount desc
+      list.sort((a, b) => b.amount - a.amount)
+      setDirectContribs(list)
+    } catch (e) {
+      setDirectContribs([])
+    }
+  }
+
   // Fetch marketplace data
   const fetchMarketplace = async () => {
     if (!connection) return
@@ -167,6 +243,11 @@ export default function PresalePage() {
     try {
       const presalePDA = getPresalePDA()
       const account = await connection.getAccountInfo(presalePDA)
+      // Always fetch current PDA balance
+      try {
+        const bal = await connection.getBalance(presalePDA)
+        setPdaBalanceLamports(bal)
+      } catch {}
       if (!account) {
         setDonationConfig(null)
         return
@@ -187,6 +268,63 @@ export default function PresalePage() {
     } catch (error) {
       console.error('Error fetching donation config:', error)
       setDonationConfig(null)
+    }
+  }
+
+  // Restart presale (admin only)
+  const restartPresale = async () => {
+    if (!publicKey) {
+      setStatus('Please connect wallet (admin)')
+      return
+    }
+    try {
+      setLoading(true)
+      setStatus('Restarting presale...')
+      const presalePDA = getPresalePDA()
+      // Prefer Anchor method via updated IDL
+      try {
+        const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions })
+        const sig = await program.methods
+          .restartPresale()
+          .accounts({ presale: presalePDA, admin: publicKey, systemProgram: SystemProgram.programId })
+          .rpc()
+        setStatus(`Presale restarted. Tx: ${sig.slice(0,12)}...`)
+      } catch (anchorErr: any) {
+        // Fallback: manual discriminator from IDL
+        const disc = new Uint8Array([131, 80, 101, 231, 146, 247, 139, 142])
+        const ix = new TransactionInstruction({
+          programId: PROGRAM_ID,
+          keys: [
+            { pubkey: presalePDA, isSigner: false, isWritable: true },
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+          data: Buffer.from(disc),
+        })
+        const tx = new Transaction().add(ix)
+        let txSig: string
+        if (sendTransaction) {
+          txSig = await sendTransaction(tx, connection, { skipPreflight: false })
+        } else if (signTransaction) {
+          const signed = await signTransaction(tx)
+          txSig = await connection.sendRawTransaction(signed.serialize())
+        } else {
+          throw new Error('Wallet cannot sign transactions')
+        }
+        setStatus(`Presale restarted. Tx: ${txSig.slice(0,12)}...`)
+      }
+      await fetchDonationConfig()
+    } catch (e: any) {
+      // Best-effort logs surfacing
+      try {
+        // @coral-xyz/anchor error objects often include logs
+        const logs = e?.logs ? `\nLogs:\n${e.logs.join('\n')}` : ''
+        setStatus(`Restart failed: ${e.message || 'Unknown error'}${logs}`)
+      } catch {
+        setStatus(`Restart failed: ${e?.message || 'Unknown error'}`)
+      }
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -246,6 +384,25 @@ export default function PresalePage() {
     const donationKey = `donated_${publicKey.toString()}`
     const hasDonatedBefore = localStorage.getItem(donationKey) === 'true'
     setHasDonated(hasDonatedBefore)
+
+    // Best-effort: consider on-chain direct transfers to PDA as donation
+    try {
+      const presalePDA = getPresalePDA()
+      const sigs = await connection.getSignaturesForAddress(presalePDA, { limit: 50 })
+      for (const s of sigs) {
+        const tx = await connection.getParsedTransaction(s.signature, { maxSupportedTransactionVersion: 0 })
+        const message = tx?.transaction.message as any
+        const accountKeys: any[] = message?.accountKeys || []
+        const userInvolved = accountKeys.some(k => (k.pubkey?.toBase58?.() || k.pubkey?.toString?.() || k?.toString?.()) === publicKey.toString())
+        if (!userInvolved) continue
+        const meta = tx?.meta as any
+        const preToken = meta?.preBalances?.[0]
+        // Lightweight: if user was involved in a tx to presale PDA, mark donated
+        setHasDonated(true)
+        localStorage.setItem(donationKey, 'true')
+        break
+      }
+    } catch {}
   }
 
   // Access pass minting is not part of the current on-chain program.
@@ -354,10 +511,28 @@ export default function PresalePage() {
     <main className="min-h-[calc(100vh-4rem)] bg-white">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-10">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight lowercase mb-4">
-          
-          </h1>
-         
+          <h1 className="text-3xl font-semibold tracking-tight lowercase mb-2">vybe presale</h1>
+          <div className="text-sm text-neutral-700 flex flex-col items-center gap-2">
+            <span>presale wallet (PDA):</span>
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-xs sm:text-sm break-all">{getPresalePDA().toString()}</code>
+              <button
+                className="text-xs underline hover:opacity-80"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(getPresalePDA().toString())
+                  setStatus('Presale wallet copied to clipboard')
+                  setTimeout(() => setStatus(''), 1500)
+                }}
+              >
+                copy
+              </button>
+            </div>
+            {donationConfig && (
+              <div className="text-xs text-neutral-600">
+                admin: <code className="font-mono break-all">{donationConfig.admin.toString()}</code>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Admin Controls */}
@@ -389,6 +564,7 @@ export default function PresalePage() {
                 onClick={() => {
                   setShowDonorModal(true)
                   fetchDonors()
+                  fetchDirectContributors()
                 }}
                 disabled={loadingDonors}
                 className="bg-blue-600 text-white hover:bg-blue-700"
@@ -427,6 +603,13 @@ export default function PresalePage() {
               >
                 Withdraw to admin
               </Button>
+              <Button
+                onClick={restartPresale}
+                disabled={loading}
+                className="bg-neutral-900 text-white hover:bg-neutral-800 ml-2"
+              >
+                {loading ? 'Restarting...' : 'Restart Presale'}
+              </Button>
             </div>
           </div>
         )}
@@ -446,7 +629,7 @@ export default function PresalePage() {
                   </button>
                 </div>
                 <p className="text-neutral-600 text-sm mt-1">
-                  Total contributors: {donors.length} • Total raised: {(donationConfig?.totalCollected || 0) / LAMPORTS_PER_SOL} SOL
+                  Total contributors: {donors.length + directContribs.length} • Total raised: {Math.max((donationConfig?.totalCollected || 0), pdaBalanceLamports) / LAMPORTS_PER_SOL} SOL
                 </p>
               </div>
               
@@ -464,7 +647,7 @@ export default function PresalePage() {
                 ) : (
                   <div className="p-6">
                     <div className="space-y-3">
-                      {donors.map((donor, index) => (
+                      {[...donors, ...directContribs].map((donor, index) => (
                         <div key={index} className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
@@ -543,15 +726,20 @@ export default function PresalePage() {
           <div className="px-4 sm:px-6 lg:px-8 text-center mb-8 w-full">
             <div className="bg-neutral-50 rounded-lg p-4 mb-6 max-w-4xl mx-auto">
               <div className="flex justify-between text-sm text-neutral-600 mb-2">
-                <span>{(donationConfig.totalCollected / LAMPORTS_PER_SOL).toFixed(2)} SOL raised</span>
-                <span>target: {(donationConfig.targetLamports / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
+                {(() => {
+                  const raisedLamports = Math.max(donationConfig.totalCollected, pdaBalanceLamports)
+                  return (
+                    <>
+                      <span>{(raisedLamports / LAMPORTS_PER_SOL).toFixed(2)} SOL raised</span>
+                      <span>target: {(donationConfig.targetLamports / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
+                    </>
+                  )
+                })()}
               </div>
               <div className="w-full bg-neutral-200 rounded-full h-2 mb-2">
                 {(() => {
-                  const pct = Math.min(
-                    (donationConfig.totalCollected / Math.max(donationConfig.targetLamports, 1)) * 100,
-                    100,
-                  )
+                  const raisedLamports = Math.max(donationConfig.totalCollected, pdaBalanceLamports)
+                  const pct = Math.min((raisedLamports / Math.max(donationConfig.targetLamports, 1)) * 100, 100)
                   return (
                     <div className="bg-black h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
                   )

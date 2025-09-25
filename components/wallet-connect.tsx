@@ -133,9 +133,7 @@ function WalletConnectInner() {
 // Dynamic import to prevent SSR hydration issues
 const DynamicWalletConnect = dynamic(
   () => Promise.resolve(() => (
-    <WalletContextProvider>
-      <WalletConnectInner />
-    </WalletContextProvider>
+    <WalletConnectInner />
   )),
   {
     ssr: false,

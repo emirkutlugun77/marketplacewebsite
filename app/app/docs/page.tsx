@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import PresalePDA from "@/components/presale-pda"
+import PresaleAdminActions from "@/components/presale-admin-actions"
 import { ChevronRight, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -211,7 +213,16 @@ export default function DocsPage() {
           <div className={cn("grid h-16", collapsed ? "grid-cols-[48px_1fr]" : "grid-cols-[1fr_3fr]")}>
             {/* Left - Documentation Title */}
             <div className="flex items-center border-r border-black px-6 transition-all duration-300">
-              {!collapsed && <h2 className="text-lg font-semibold lowercase">documentation</h2>}
+              {!collapsed && (
+                <div className="flex items-center gap-4">
+                  <h2 className="text-lg font-semibold lowercase">documentation</h2>
+                  {/* Presale Wallet indicator and admin button */}
+                  <div className="hidden md:flex items-center gap-2">
+                    <PresalePDA />
+                    <PresaleAdminActions />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Right - Breadcrumb Navigation */}
